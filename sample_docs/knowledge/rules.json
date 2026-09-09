@@ -1,0 +1,79 @@
+[
+  {
+    "rule_id": "IMJ-R-001",
+    "name": "원료 부족",
+    "source_table": "inventory",
+    "condition": "quantity_kg < safety_stock_kg",
+    "owner": "구매·생산",
+    "action": "부족량·입고 예정 확인 후 발주 검토",
+    "source_document": "IMJ-KB-007",
+    "revision": "DEMO-1",
+    "status": "미승인 샘플"
+  },
+  {
+    "rule_id": "IMJ-R-002",
+    "name": "발효 위험 예측",
+    "source_table": "fermentation_predictions",
+    "condition": "abnormal_risk >= 0.5 (데모 표시 조건)",
+    "owner": "생산·품질",
+    "action": "실측값과 승인 규격 대조",
+    "source_document": "IMJ-KB-005",
+    "revision": "DEMO-1",
+    "status": "미승인 샘플"
+  },
+  {
+    "rule_id": "IMJ-R-003",
+    "name": "CCP 주의·부적합",
+    "source_table": "ccp_checks",
+    "condition": "result != '적합'",
+    "owner": "HACCP·품질",
+    "action": "영향 LOT·조치 및 재검사 승인 확인",
+    "source_document": "IMJ-KB-006",
+    "revision": "DEMO-1",
+    "status": "미승인 샘플"
+  },
+  {
+    "rule_id": "IMJ-R-004",
+    "name": "출하 승인대기",
+    "source_table": "shipments",
+    "condition": "approval_status != '승인'",
+    "owner": "품질·물류",
+    "action": "승인근거 취합 및 승인 담당자 검토",
+    "source_document": "IMJ-KB-008",
+    "revision": "DEMO-1",
+    "status": "미승인 샘플"
+  },
+  {
+    "rule_id": "IMJ-R-005",
+    "name": "클레임 분석중",
+    "source_table": "claims",
+    "condition": "status = '분석중'",
+    "owner": "품질",
+    "action": "계보와 운송·보관 이력 수집",
+    "source_document": "IMJ-KB-009",
+    "revision": "DEMO-1",
+    "status": "미승인 샘플"
+  },
+  {
+    "rule_id": "IMJ-R-006",
+    "name": "센서 상태 주의",
+    "source_table": "process_measurements",
+    "condition": "equipment_status != '정상'",
+    "owner": "설비·품질",
+    "action": "센서·냉장고 상태와 기록 확인",
+    "source_document": "IMJ-KB-010",
+    "revision": "DEMO-1",
+    "status": "미승인 샘플"
+  },
+  {
+    "rule_id": "IMJ-R-007",
+    "name": "계보 누락",
+    "source_table": "lots",
+    "condition": "parent_lot_id IS NULL AND process != '원재료 입고'",
+    "owner": "생산관리",
+    "action": "상위 원료·공정 LOT 연결 확인",
+    "source_document": "IMJ-KB-001",
+    "revision": "DEMO-1",
+    "status": "미승인 샘플"
+  }
+]
