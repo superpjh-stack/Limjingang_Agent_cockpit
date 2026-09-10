@@ -1,0 +1,4 @@
+interface:
+  display_name: "스킬2 · React Agent"
+  short_description: "React·FastAPI로 전문적인 제조 AI 업무 웹앱 V2 만들기"
+  default_prompt: "$skill-2-react 스킬을 활용해 우리 회사 제조 AI Agent Cockpit을 만들어줘."

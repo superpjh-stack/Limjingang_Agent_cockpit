@@ -6,3 +6,8 @@ __pycache__/
 .pytest_cache/
 data/postgres/
 data/postgres.log
+.venv-v2/
+node_modules/
+v2/web/dist/
+*.tsbuildinfo
+data/imjingang_v2_demo.db

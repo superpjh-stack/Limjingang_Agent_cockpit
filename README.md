@@ -2,6 +2,12 @@
 
 경동글로벌텍의 `agent-cokpit-maker` 스킬과 원본 cockpit 구조를 임진강김치의 원료·절임·발효·CCP·포장·출하 업무에 적용한 Streamlit 시제품입니다. ERP·IoT Data Hub를 조회하는 구조이며 MES 신규 구축을 전제로 하지 않습니다.
 
+## 두 가지 버전
+
+- **스킬1 · Streamlit V1**: 기존 루트 앱과 Hostinger 8502 배포
+- **스킬2 · React V2**: React·TypeScript + FastAPI 웹앱, [V2 실행 안내](v2/README.md)
+- 재사용 스킬: [스킬1](skills/skill-1-streamlit/SKILL.md), [스킬2](skills/skill-2-react/SKILL.md)
+
 ## 구성
 
 - 포장·CCP·발효·재고·출하 KPI와 근거형 한국어 대화

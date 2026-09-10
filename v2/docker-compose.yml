@@ -1,0 +1,34 @@
+name: imjingang-v2
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: imj_v2
+      POSTGRES_USER: imj_v2
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - imj_v2_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U imj_v2 -d imj_v2"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  app:
+    image: imjingang-cockpit-v2:local
+    build:
+      context: ..
+      dockerfile: v2/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://imj_v2:${POSTGRES_PASSWORD}@postgres:5432/imj_v2
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      COCKPIT_ACCESS_TOKEN: ${COCKPIT_ACCESS_TOKEN:-}
+    ports:
+      - "${V2_PORT:-8503}:8510"
+volumes:
+  imj_v2_postgres:

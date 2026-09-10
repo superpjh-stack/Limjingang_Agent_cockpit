@@ -1,0 +1,4 @@
+interface:
+  display_name: "스킬1 · Streamlit Agent"
+  short_description: "Streamlit 기반 제조 AI 에이전트와 근거형 업무 화면 만들기"
+  default_prompt: "$skill-1-streamlit 스킬을 활용해 우리 회사 제조 AI Agent Cockpit을 만들어줘."
