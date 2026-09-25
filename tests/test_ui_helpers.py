@@ -9,3 +9,4 @@ def test_cockpit_helpers(tmp_path):
     assert set(QUESTION_GROUPS) == {"지식베이스", "DB", "룰"}
     assert all(len(items) == 10 for items in QUESTION_GROUPS.values())
     assert user_question_history([{"role":"user","content":"LOT","created_at":"10:00"}])[0]["content"]=="LOT"
+

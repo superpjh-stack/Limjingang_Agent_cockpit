@@ -8,6 +8,10 @@
 - **스킬2 · React V2**: React·TypeScript + FastAPI 웹앱, [V2 실행 안내](v2/README.md)
 - 재사용 스킬: [스킬1](skills/skill-1-streamlit/SKILL.md), [스킬2](skills/skill-2-react/SKILL.md)
 
+## v2.0 고객 경험 재기획
+
+모바일 음성 사용과 PC 업무 검토를 연결하는 [제품·고객 여정 기획](docs/v2.0-product-plan.md)과 [개발 명세·수용 기준](docs/v2.0-delivery-spec.md)을 정리했습니다. 기존 React V2를 확장하는 계획이며, 문서의 신규 녹음·업무 저장·인계·기기 간 이어보기는 아직 구현되지 않았습니다.
+
 ## 구성
 
 - 포장·CCP·발효·재고·출하 KPI와 근거형 한국어 대화

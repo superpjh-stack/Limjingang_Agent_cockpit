@@ -28,6 +28,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
       COCKPIT_ACCESS_TOKEN: ${COCKPIT_ACCESS_TOKEN:-}
+      V2_REQUIRE_LOGIN: ${V2_REQUIRE_LOGIN:-1}
     ports:
       - "${V2_PORT:-8503}:8510"
 volumes:

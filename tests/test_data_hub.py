@@ -37,3 +37,4 @@ def test_registry_blocks_write_tools(tmp_path):
     denied = json.loads(registry.execute("approve_shipment", "{}"))
     assert allowed["data"][0]["stock_status"] == "부족"
     assert "error" in denied
+

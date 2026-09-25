@@ -34,3 +34,4 @@ def test_agent_rejects_blank_question(tmp_path):
     registry = ImjingangToolRegistry(ImjingangRepository(tmp_path / "factory.db"))
     with pytest.raises(ValueError):
         ManufacturingAgent(FakeClient(), factory_tools=registry).ask(" ")
+

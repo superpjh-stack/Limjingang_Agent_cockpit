@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Maker"
+  short_description: "제조 데이터와 음성을 연결하는 AI Agent 구축 스킬"
+  default_prompt: "Use $agent-maker to build a Korean manufacturing AI Agent with evidence-backed chat, process-data tools, and Realtime voice."

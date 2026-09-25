@@ -83,6 +83,9 @@ class ImjingangRepository:
                 ("FERM-260902-001", "MIX-260902-001", "발효·숙성", "율무 포기김치", 9800, None, None, "숙성중", "2026-09-02 10:10"),
                 ("PACK-260903-001", "FERM-260902-001", "포장", "율무 포기김치", 9600, None, None, "출하검토", "2026-09-03 09:00"),
                 ("FERM-260903-002", None, "발효·숙성", "율무 총각김치", 4200, None, None, "이상검토", "2026-09-03 07:30"),
+                ("RAW-260904-002", None, "원재료 입고", "무", 5200, "공급처 B", "파주", "검사완료", "2026-09-04 06:50"),
+                ("SALT-260904-002", "RAW-260904-002", "세척·절임", "절임무", 4900, None, None, "진행중", "2026-09-04 08:20"),
+                ("PACK-260904-002", "SALT-260904-002", "포장", "율무 총각김치", 4600, None, None, "대기", "2026-09-04 13:10"),
             ],
         )
         connection.executemany(
@@ -247,19 +250,22 @@ class ImjingangRepository:
             );
             CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT);
         """)
-        directory = Path(__file__).resolve().parent.parent / "sample_docs" / "knowledge"
-        for path in sorted(directory.glob("*.md")):
-            connection.execute(
-                "INSERT OR IGNORE INTO knowledge_documents (document_id, filename, content, source, status) VALUES (?, ?, ?, ?, ?)",
-                (path.stem.split("_")[0], path.name, path.read_text(), "로컬 샘플", "미승인 샘플"),
-            )
-        rules_path = directory / "rules.json"
-        if rules_path.exists():
-            for rule in json.loads(rules_path.read_text()):
-                connection.execute("INSERT OR IGNORE INTO rules VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    tuple(rule[key] for key in (
-                        "rule_id", "name", "source_table", "condition", "owner", "action",
-                        "source_document", "revision", "status")))
+        documents = [
+            ("IMJ-KB-001", "IMJ-KB-001_공정흐름_LOT.md", "원재료 입고→선별→세척·절임→양념·혼합→발효·숙성→포장→출하 순으로 LOT를 연결한다. 분할·합류 발생 시 원본 LOT와 새 LOT의 관계를 모두 기록한다."),
+            ("IMJ-KB-002", "IMJ-KB-002_원재료_입고검사.md", "배추·무·율무 입고 시 공급처, 산지, 중량, 외관, 이물, 검사일시와 판정자를 확인한다. 부적합 원료는 사용 전 격리하고 검토 이력을 남긴다."),
+            ("IMJ-KB-003", "IMJ-KB-003_세척_절임.md", "세척·절임 공정은 작업 LOT, 설비, 시작·종료시각, 염도, 온도, 중량을 기록한다. 기준 이탈 시 임의 조정하지 않고 품질담당자에게 보고한다."),
+            ("IMJ-KB-004", "IMJ-KB-004_양념_혼합.md", "양념 배합과 혼합 시 투입 원료 LOT, 계량값, 작업자, 설비, 혼합 시간을 확인한다. 승인된 배합표와 다른 경우 후속 공정을 진행하지 않는다."),
+            ("IMJ-KB-005", "IMJ-KB-005_발효_숙성.md", "발효·숙성 검토에서는 pH, 산도, 염도, 온도, 측정시각과 장비 상태를 함께 본다. 단일 수치만으로 적합을 확정하지 않고 승인된 품목별 기준서를 확인한다."),
+            ("IMJ-KB-006", "IMJ-KB-006_CCP_이탈검토.md", "CCP 주의·이탈 발생 시 LOT, 발생시각, 측정값, 장비상태, 임시조치, 확인자를 기록한다. 격리·폐기·출하 여부는 승인 권한자가 결정한다."),
+            ("IMJ-KB-007", "IMJ-KB-007_재고_부족.md", "재고 부족은 현재고, 안전재고, 사용예정량, 입고예정일을 함께 검토한다. 부족량은 안전재고에서 현재고를 뺀 값으로 표시하되 발주는 담당자 승인 후 진행한다."),
+            ("IMJ-KB-008", "IMJ-KB-008_포장_출하검토.md", "출하 전 포장 LOT 계보, 금속검출 CCP, 발효 기록, 표시사항, 수량, 고객·목적지와 승인상태를 확인한다. 미확인 기록은 정상으로 간주하지 않는다."),
+            ("IMJ-KB-009", "IMJ-KB-009_클레임_역추적.md", "클레임 접수 시 출하번호와 포장 LOT를 기준으로 발효, 혼합, 절임, 원재료 LOT를 역추적한다. 관련 측정값·CCP·출하·보관 기록의 시각을 함께 보존한다."),
+            ("IMJ-KB-010", "IMJ-KB-010_데이터품질_예측검증.md", "예측값은 모델명, 버전, 예측시각, 입력 누락, 검증 지표와 함께 해석한다. 예측 정확도 목표를 실적으로 표시하지 않고 품질 판정을 자동 실행하지 않는다."),
+        ]
+        connection.executemany(
+            "INSERT OR IGNORE INTO knowledge_documents (document_id, filename, content, source, status) VALUES (?, ?, ?, '로컬 샘플', '미승인 샘플')",
+            documents,
+        )
 
     def knowledge_documents(self) -> list[dict[str, Any]]:
         return self._query("SELECT * FROM knowledge_documents ORDER BY document_id")
