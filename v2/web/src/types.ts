@@ -17,8 +17,13 @@ export async function request<T>(path:string, init?:RequestInit):Promise<T> {
 export type User={id:string;username:string;name:string;organization:string;role:'operator'|'reviewer'|'admin'};
 export type WorkItem={id:string;title:string;lot_id:string|null;kind:string;status:string;creator_id:string;assignee_id:string;version:number;created_at:string;updated_at:string;snapshot:{question:string;answer:Answer}|null;snapshots?:{question:string;answer:Answer}[];notes:{text:string;author:string;at:string}[];events:{action:string;actor:string;at:string;request_id:string}[];handoff:{sender_id:string;recipient_id:string;request:string;sent_at:string;acknowledged_at:string|null}|null};
 export type JourneyEvent='task_opened'|'voice_started'|'voice_cancelled'|'transcript_ready'|'transcript_edited'|'question_submitted'|'answer_ready'|'evidence_opened'|'task_saved'|'handoff_sent'|'handoff_acknowledged'|'task_resumed'|'review_completed';
+export function clientId(){
+ if(globalThis.crypto?.randomUUID)return globalThis.crypto.randomUUID();
+ const bytes=new Uint8Array(16);globalThis.crypto?.getRandomValues?.(bytes);
+ return `${Date.now().toString(36)}-${Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('')||Math.random().toString(36).slice(2)}`;
+}
 // Pilot journey events: names and timings only, never text, audio or keys. Losing one never blocks work.
-const journeyId=crypto.randomUUID(), queue:Record<string,unknown>[]=[];let flushTimer:ReturnType<typeof setTimeout>|null=null;
+const journeyId=clientId(), queue:Record<string,unknown>[]=[];let flushTimer:ReturnType<typeof setTimeout>|null=null;
 function flush(){flushTimer=null;const events=queue.splice(0,20);if(!events.length)return;fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({events}),keepalive:true}).catch(()=>{});if(queue.length)flush()}
 // Work events use the work item id as journey so a save on the phone links to the PC review.
 export function track(event:JourneyEvent,extra:{source?:'voice'|'text'|'suggestion';mode?:'demo'|'ai';duration_ms?:number;work?:string}={}){

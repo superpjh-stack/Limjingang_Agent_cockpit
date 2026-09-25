@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {ArrowLeft,ArrowUpRight,Check,ClipboardList,RefreshCw,Save,Send} from 'lucide-react';
-import {request,track,type User,type WorkItem} from '../types';
+import {clientId,request,track,type User,type WorkItem} from '../types';
 
 type Props={user:User|null;item:WorkItem|null;onSelect:(item:WorkItem|null)=>void;onOpen:(item:WorkItem)=>void;onLogin:()=>void;onLot:(lot:string)=>void;onAsk:()=>void;revision:number};
 const kinds:Record<string,string>={quality:'품질 검토',shipment:'출하 검토',claim:'문의·클레임',general:'일반 확인'};
@@ -15,7 +15,7 @@ export function WorkBoard({user,item,onSelect,onOpen,onLogin,onLot,onAsk,revisio
  async function refresh(){if(!item){await load();return}setError('');try{onSelect(await request<WorkItem>('/work-items/'+item.id));setNotice('최신 업무를 불러왔습니다. 작성 중인 메모는 유지했습니다.')}catch(e){setError((e as Error).message)}}
  async function change(action:string){
   if(!item||lock.current)return;lock.current=true;setBusy(true);setError('');setNotice('');
-  const key=JSON.stringify([item.id,item.version,action,note,recipient]);if(pending.current?.key!==key)pending.current={key,id:crypto.randomUUID()};
+  const key=JSON.stringify([item.id,item.version,action,note,recipient]);if(pending.current?.key!==key)pending.current={key,id:clientId()};
   try{const next=await request<WorkItem>('/work-items/'+item.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected_version:item.version,request_id:pending.current.id,action,text:note,recipient_id:recipient||null})});onSelect(next);const done={handoff:'handoff_sent',acknowledge:'handoff_acknowledged',complete:'review_completed'}[action] as 'handoff_sent'|undefined;if(done)track(done,{work:item.id});setNote('');pending.current=null;setNotice('저장했습니다. '+new Date(next.updated_at).toLocaleString('ko-KR'));await load()}catch(e){setError((e as Error).message)}finally{lock.current=false;setBusy(false)}
  }
  function buildDraft(type:string){
