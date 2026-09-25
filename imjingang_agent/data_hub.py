@@ -387,8 +387,11 @@ class _PostgresConnection:
         return _PostgresCursor(cursor)
 
     def executemany(self, sql: str, params: list[tuple[Any, ...]]) -> None:
+        converted = self._sql(sql)
+        if "INSERT OR IGNORE INTO" in sql:
+            converted += " ON CONFLICT DO NOTHING"
         with self.connection.cursor() as cursor:
-            cursor.executemany(self._sql(sql), params)
+            cursor.executemany(converted, params)
 
     def executescript(self, script: str) -> None:
         for statement in script.split(";"):
