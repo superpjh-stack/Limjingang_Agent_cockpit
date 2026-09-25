@@ -11,7 +11,6 @@ WORKDIR /app
 COPY v2/requirements.lock ./v2/requirements.lock
 RUN pip install --no-cache-dir -r v2/requirements.lock
 COPY imjingang_agent ./imjingang_agent
-COPY sample_docs ./sample_docs
 COPY v2/__init__.py v2/api.py v2/work.py v2/metrics.py v2/manage_users.py ./v2/
 COPY --from=web /build/dist ./v2/web/dist
 RUN useradd --create-home cockpit && mkdir /app/data && chown cockpit:cockpit /app/data
