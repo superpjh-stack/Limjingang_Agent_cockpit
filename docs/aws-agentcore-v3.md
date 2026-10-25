@@ -39,8 +39,9 @@ demo 모드는 실제 LLM이나 AgentCore 호출이 아니다. 응답에는 `dem
 ```bash
 V3_AGENT_BACKEND=agentcore
 AWS_REGION=ap-northeast-2
-V3_BEDROCK_MODEL_ID=<서울 리전에서 접근 가능한 모델 ID>
+V3_BEDROCK_MODEL_ID=<서울 리전에서 호출 가능한 모델 또는 추론 프로필 ID>
 V3_AGENTCORE_RUNTIME_ARN=<배포 출력 RuntimeArn>
+V3_AGENTCORE_QUALIFIER=ImjingangV3Live
 V3_AGENTCORE_GATEWAY_URL=<배포 출력 GatewayUrl>
 DATABASE_URL=<V3 전용 PostgreSQL URL>
 ```
@@ -77,10 +78,10 @@ source .venv-agentcore-infra/bin/activate
 pip install -r infra/agentcore-v3/requirements.txt
 cd infra/agentcore-v3
 CDK_DEFAULT_REGION=ap-northeast-2 cdk synth -c account=<AWS_ACCOUNT_ID>
-cdk diff --parameters BedrockModelId=<MODEL_ID> --parameters RuntimeImageTag=v3
+cdk diff --parameters BedrockModelId=<MODEL_ID> --parameters RuntimeImageTag=v3 --parameters EnableAgentCoreRuntime=false
 ```
 
-배포 전 Runtime 이미지를 CDK가 생성한 ECR 저장소에 올려야 한다. `EnableAgentCoreMemory`의 기본값은 `false`다. AgentCore Memory의 공식 최소 이벤트 보존기간이 3일이므로, 앱의 24시간 세션 정책과 동일하지 않다. 데이터 보존 승인을 받은 경우에만 `true`로 배포한다.
+첫 배포는 `EnableAgentCoreRuntime=false`로 ECR과 Gateway를 만든다. ARM64 Runtime 이미지를 해당 ECR 저장소에 올린 다음 `EnableAgentCoreRuntime=true`로 스택을 업데이트한다. `EnableAgentCoreMemory`의 기본값은 `false`다. AgentCore Memory의 공식 최소 이벤트 보존기간이 3일이므로, 앱의 24시간 세션 정책과 동일하지 않다. 데이터 보존 승인을 받은 경우에만 `true`로 배포한다.
 
 서울 리전에서 선택한 AgentCore 기능과 모델이 실제 계정에 제공되는지 `cdk diff`와 AWS 콘솔에서 확인한다. 지원되지 않는 경우 다른 리전으로 자동 전환하지 않는다.
 
@@ -102,3 +103,16 @@ cdk diff --parameters BedrockModelId=<MODEL_ID> --parameters RuntimeImageTag=v3
 - 비용·로그·데이터 보존 정책 운영 승인
 
 이 항목을 수행하지 않은 로컬 결과는 AWS 배포 완료로 표현하지 않는다.
+
+## 2026-10-26 배포 검증
+
+- CloudFormation 스택 `imjingang-agentcore-v3`: `UPDATE_COMPLETE`
+- 리전: `ap-northeast-2`
+- Runtime 엔드포인트: `ImjingangV3Live`
+- 모델: `global.amazon.nova-2-lite-v1:0`
+- ECR 이미지: `v3`, ARM64, digest `sha256:b3f9cc11693183848d71033d542d4311df0c2e2d7a76f287405c026e75b0c62b`
+- 실제 `InvokeAgentRuntime`: HTTP 200
+- 검증 질문: `PACK-260903-001` 계보·출하 확인
+- 사용 도구: `get_lot_trace`, `get_shipment_readiness`
+- AgentCore Memory: 데이터 보존 승인 전이므로 비활성화
+- Gateway: AWS IAM 인증으로 생성됐지만 제조 도구 대상 등록은 아직 하지 않음

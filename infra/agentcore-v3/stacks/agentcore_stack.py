@@ -12,7 +12,9 @@ class AgentCoreV3Stack(cdk.Stack):
 
         model_id = cdk.CfnParameter(self, "BedrockModelId", type="String", description="Bedrock model ID available in this region")
         image_tag = cdk.CfnParameter(self, "RuntimeImageTag", type="String", default="v3")
+        enable_runtime = cdk.CfnParameter(self, "EnableAgentCoreRuntime", type="String", default="false", allowed_values=["true", "false"])
         enable_memory = cdk.CfnParameter(self, "EnableAgentCoreMemory", type="String", default="false", allowed_values=["true", "false"])
+        runtime_condition = cdk.CfnCondition(self, "CreateRuntime", expression=cdk.Fn.condition_equals(enable_runtime.value_as_string, "true"))
 
         repository = ecr.Repository(
             self,
@@ -30,7 +32,10 @@ class AgentCoreV3Stack(cdk.Stack):
         )
         runtime_role.add_to_policy(iam.PolicyStatement(
             actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
-            resources=[cdk.Fn.sub("arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${Model}", {"Model": model_id.value_as_string})],
+            resources=[
+                cdk.Fn.sub("arn:${AWS::Partition}:bedrock:*::foundation-model/amazon.nova-2-lite-v1:0"),
+                cdk.Fn.sub("arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${Model}", {"Model": model_id.value_as_string}),
+            ],
         ))
         repository.grant_pull(runtime_role)
 
@@ -50,7 +55,7 @@ class AgentCoreV3Stack(cdk.Stack):
                 "AgentRuntimeName": "ImjingangManufacturingV3",
                 "Description": "Read-only evidence-backed kimchi manufacturing agent",
                 "EnvironmentVariables": {"AWS_REGION": self.region, "V3_AGENT_BACKEND": "demo", "V3_BEDROCK_MODEL_ID": model_id.value_as_string},
-                "LifecycleConfiguration": {"IdleRuntimeSessionTimeout": 900, "MaxLifetime": 86400},
+                "LifecycleConfiguration": {"IdleRuntimeSessionTimeout": 900, "MaxLifetime": 28800},
                 "NetworkConfiguration": {"NetworkMode": "PUBLIC"},
                 "ProtocolConfiguration": "HTTP",
                 "RoleArn": runtime_role.role_arn,
@@ -58,6 +63,7 @@ class AgentCoreV3Stack(cdk.Stack):
             },
         )
         runtime.node.add_dependency(runtime_role)
+        runtime.cfn_options.condition = runtime_condition
 
         endpoint = cdk.CfnResource(
             self,
@@ -72,6 +78,7 @@ class AgentCoreV3Stack(cdk.Stack):
             },
         )
         endpoint.node.add_dependency(runtime)
+        endpoint.cfn_options.condition = runtime_condition
 
         gateway = cdk.CfnResource(
             self,
@@ -100,8 +107,8 @@ class AgentCoreV3Stack(cdk.Stack):
         )
         memory.cfn_options.condition = memory_condition
 
-        cdk.CfnOutput(self, "RuntimeArn", value=runtime.get_att("AgentRuntimeArn").to_string())
-        cdk.CfnOutput(self, "RuntimeEndpointArn", value=endpoint.get_att("AgentRuntimeEndpointArn").to_string())
+        cdk.CfnOutput(self, "RuntimeArn", value=runtime.get_att("AgentRuntimeArn").to_string(), condition=runtime_condition)
+        cdk.CfnOutput(self, "RuntimeEndpointArn", value=endpoint.get_att("AgentRuntimeEndpointArn").to_string(), condition=runtime_condition)
         cdk.CfnOutput(self, "GatewayUrl", value=gateway.get_att("GatewayUrl").to_string())
         cdk.CfnOutput(self, "RuntimeRepositoryUri", value=repository.repository_uri)
         cdk.CfnOutput(self, "MemoryId", value=memory.get_att("MemoryId").to_string(), condition=memory_condition)

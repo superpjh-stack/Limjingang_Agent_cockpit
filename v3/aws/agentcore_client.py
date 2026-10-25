@@ -13,10 +13,11 @@ class AgentCoreError(RuntimeError):
 class AgentCoreClient:
     """Thin wrapper around the evolving AgentCore Runtime boto3 API."""
 
-    def __init__(self, runtime_arn: str, region: str, timeout: float = 45.0, client: Any | None = None) -> None:
+    def __init__(self, runtime_arn: str, region: str, timeout: float = 45.0, qualifier: str = "DEFAULT", client: Any | None = None) -> None:
         self.runtime_arn = runtime_arn
         self.region = region
         self.timeout = timeout
+        self.qualifier = qualifier
         if client is None:
             try:
                 import boto3
@@ -37,7 +38,7 @@ class AgentCoreClient:
                 agentRuntimeArn=self.runtime_arn,
                 runtimeSessionId=request.session_id,
                 payload=payload,
-                qualifier="DEFAULT",
+                qualifier=self.qualifier,
             )
             body = response.get("response") or response.get("body")
             if hasattr(body, "read"):

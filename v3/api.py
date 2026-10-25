@@ -41,7 +41,7 @@ def create_app(repository: Any | None = None, settings: V3Settings | None = None
             app.state.agent = backend
         elif settings.backend == "agentcore":
             app.state.agent = AgentCoreBackend(
-                AgentCoreClient(settings.runtime_arn, settings.aws_region, settings.request_timeout),
+                AgentCoreClient(settings.runtime_arn, settings.aws_region, settings.request_timeout, settings.runtime_qualifier),
                 settings.aws_region,
                 settings.model_id,
             )

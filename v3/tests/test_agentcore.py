@@ -13,7 +13,9 @@ def request():
 
 
 class FakeClient:
+    kwargs = None
     def invoke_agent_runtime(self, **kwargs):
+        self.kwargs = kwargs
         return {"response": io.BytesIO(json.dumps({
             "text": "확인했습니다.", "sources": [], "evidence": [], "data_tools": [], "records": [],
             "searched_documents": False,
@@ -21,9 +23,11 @@ class FakeClient:
 
 
 def test_client_invokes_runtime_with_session():
-    client = AgentCoreClient("arn:aws:bedrock-agentcore:ap-northeast-2:123:runtime/test", "ap-northeast-2", client=FakeClient())
+    fake = FakeClient()
+    client = AgentCoreClient("arn:aws:bedrock-agentcore:ap-northeast-2:123:runtime/test", "ap-northeast-2", qualifier="ImjingangV3Live", client=fake)
     result = client.invoke(request())
     assert result["text"] == "확인했습니다."
+    assert fake.kwargs["qualifier"] == "ImjingangV3Live"
 
 
 def test_backend_normalizes_platform_metadata():
