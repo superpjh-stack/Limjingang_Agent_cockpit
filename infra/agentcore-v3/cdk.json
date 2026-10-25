@@ -1,0 +1,7 @@
+{
+  "app": "python app.py",
+  "context": {
+    "aws:cdk:enable-path-metadata": false,
+    "aws:cdk:enable-asset-metadata": false
+  }
+}

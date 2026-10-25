@@ -1,0 +1,38 @@
+name: imjingang-v3
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: imj_v3
+      POSTGRES_USER: imj_v3
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - imj_v3_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U imj_v3 -d imj_v3"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  app:
+    image: imjingang-agentcore-v3:local
+    build:
+      context: ..
+      dockerfile: v3/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://imj_v3:${POSTGRES_PASSWORD}@postgres:5432/imj_v3
+      V3_AGENT_BACKEND: ${V3_AGENT_BACKEND:-demo}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      V3_BEDROCK_MODEL_ID: ${V3_BEDROCK_MODEL_ID:-}
+      V3_AGENTCORE_RUNTIME_ARN: ${V3_AGENTCORE_RUNTIME_ARN:-}
+      V3_AGENTCORE_GATEWAY_URL: ${V3_AGENTCORE_GATEWAY_URL:-}
+      V3_AGENTCORE_MEMORY_ID: ${V3_AGENTCORE_MEMORY_ID:-}
+      V3_SECURE_COOKIE: ${V3_SECURE_COOKIE:-0}
+    ports:
+      - "${V3_PORT:-8504}:8510"
+volumes:
+  imj_v3_postgres:
