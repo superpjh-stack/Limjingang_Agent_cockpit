@@ -1,5 +1,7 @@
 # 임진강김치 V3 App Runner 웹 배포 설계
 
+> 상태: 2026-10-27 폐기. AWS App Runner는 서울 리전을 지원하지 않아 [ECS Fargate 설계](2026-10-27-ecs-fargate-v3-web-design.md)로 대체한다.
+
 ## 1. 목적
 
 배포된 Amazon Bedrock AgentCore V3 Runtime을 실제 브라우저에서 테스트할 수 있도록 React·FastAPI V3 애플리케이션을 AWS App Runner에 독립 배포한다. 기존 V1, V2와 AgentCore Runtime 배포는 유지한다.
