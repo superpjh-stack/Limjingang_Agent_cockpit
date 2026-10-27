@@ -211,6 +211,10 @@ def create_app(repository: Any | None = None, settings: V3Settings | None = None
         if assets.is_dir():
             app.mount("/assets", StaticFiles(directory=assets), name="v3-assets")
 
+        @app.get("/pcm-processor.js", include_in_schema=False)
+        def pcm_processor():
+            return FileResponse(dist / "pcm-processor.js", media_type="application/javascript")
+
         @app.get("/{path:path}")
         def frontend(path: str):
             if path.startswith("api/"):
