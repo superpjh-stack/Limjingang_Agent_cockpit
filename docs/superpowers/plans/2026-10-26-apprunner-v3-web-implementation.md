@@ -1,5 +1,7 @@
 # V3 App Runner 웹 배포 구현 계획
 
+> 상태: 2026-10-27 폐기. 서울 리전 미지원으로 [ECS Fargate 구현 계획](2026-10-27-ecs-fargate-v3-web-implementation.md)으로 대체한다.
+
 ## 목표
 
 승인된 [App Runner 설계](../specs/2026-10-26-apprunner-v3-web-design.md)에 따라 V3 React·FastAPI 앱을 서울 리전 App Runner에 배포하고 공개 HTTPS URL에서 AgentCore Runtime 호출을 검증한다.
