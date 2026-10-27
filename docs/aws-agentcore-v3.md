@@ -116,3 +116,16 @@ cdk diff --parameters BedrockModelId=<MODEL_ID> --parameters RuntimeImageTag=v3 
 - 사용 도구: `get_lot_trace`, `get_shipment_readiness`
 - AgentCore Memory: 데이터 보존 승인 전이므로 비활성화
 - Gateway: AWS IAM 인증으로 생성됐지만 제조 도구 대상 등록은 아직 하지 않음
+
+## 2026-10-27 ECS 웹 배포 검증
+
+- CloudFormation 스택 `imjingang-ecs-web-v3`: `CREATE_COMPLETE`
+- 공개 URL: `http://imjing-WebSe-ee3yHxBjsjKN-1271617388.ap-northeast-2.elb.amazonaws.com`
+- 구성: 공개 ALB → private subnet의 ECS Fargate 태스크 1개
+- 웹 ECR 이미지: `v3-web`, AMD64, digest `sha256:deaf054bd54fd77aa451f1ca00b965cb8f2d48764a3584ba3322c5c4f1c04587`
+- ECS 상태: desired 1, running 1, rollout `COMPLETED`
+- `/`, `/api/health`: HTTP 200
+- 실제 `/api/chat`: HTTP 200, AgentCore 모드, 모델 `global.amazon.nova-2-lite-v1:0`
+- 검증 질문: `PACK-260903-001` 출하 가능 여부와 확인사항
+- 사용 도구: `get_lot_trace`, `get_shipment_readiness`
+- 현재 URL은 테스트용 HTTP 공개 엔드포인트다. 실제 운영 전 HTTPS, 접근 인증, WAF, 영속 PostgreSQL을 추가한다.

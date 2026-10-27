@@ -23,6 +23,13 @@ class AgentCoreV3Stack(cdk.Stack):
             encryption=ecr.RepositoryEncryption.AES_256,
             removal_policy=cdk.RemovalPolicy.RETAIN,
         )
+        web_repository = ecr.Repository(
+            self,
+            "WebRepository",
+            image_scan_on_push=True,
+            encryption=ecr.RepositoryEncryption.AES_256,
+            removal_policy=cdk.RemovalPolicy.RETAIN,
+        )
 
         runtime_role = iam.Role(
             self,
@@ -111,4 +118,6 @@ class AgentCoreV3Stack(cdk.Stack):
         cdk.CfnOutput(self, "RuntimeEndpointArn", value=endpoint.get_att("AgentRuntimeEndpointArn").to_string(), condition=runtime_condition)
         cdk.CfnOutput(self, "GatewayUrl", value=gateway.get_att("GatewayUrl").to_string())
         cdk.CfnOutput(self, "RuntimeRepositoryUri", value=repository.repository_uri)
+        cdk.CfnOutput(self, "WebRepositoryUri", value=web_repository.repository_uri)
+        cdk.CfnOutput(self, "WebRepositoryName", value=web_repository.repository_name)
         cdk.CfnOutput(self, "MemoryId", value=memory.get_att("MemoryId").to_string(), condition=memory_condition)

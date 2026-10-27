@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from v3.contracts import AgentRequest
+
+
+logger = logging.getLogger(__name__)
 
 
 class AgentCoreError(RuntimeError):
@@ -39,6 +43,8 @@ class AgentCoreClient:
                 runtimeSessionId=request.session_id,
                 payload=payload,
                 qualifier=self.qualifier,
+                contentType="application/json",
+                accept="application/json",
             )
             body = response.get("response") or response.get("body")
             if hasattr(body, "read"):
@@ -52,6 +58,7 @@ class AgentCoreClient:
         except AgentCoreError:
             raise
         except Exception as exc:
+            logger.exception("AgentCore Runtime invocation failed")
             name = exc.__class__.__name__.lower()
             if "access" in name or "credential" in name or "unauthorized" in name:
                 message = "AgentCore 호출 권한을 확인해 주세요."

@@ -28,6 +28,8 @@ def test_client_invokes_runtime_with_session():
     result = client.invoke(request())
     assert result["text"] == "확인했습니다."
     assert fake.kwargs["qualifier"] == "ImjingangV3Live"
+    assert fake.kwargs["contentType"] == "application/json"
+    assert fake.kwargs["accept"] == "application/json"
 
 
 def test_backend_normalizes_platform_metadata():
