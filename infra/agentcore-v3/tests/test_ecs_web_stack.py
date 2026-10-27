@@ -16,6 +16,7 @@ def test_web_service_is_private_fargate_behind_public_alb():
     result.has_resource_properties("AWS::EC2::Subnet", {"AvailabilityZone": "ap-northeast-2c"})
     result.resource_count_is("AWS::ECS::Service", 1)
     result.resource_count_is("AWS::ElasticLoadBalancingV2::LoadBalancer", 1)
+    result.resource_count_is("AWS::CloudFront::Distribution", 1)
     result.has_resource_properties("AWS::ECS::Service", {
         "DesiredCount": 1,
         "DeploymentConfiguration": Match.object_like({"DeploymentCircuitBreaker": {"Enable": True, "Rollback": True}}),
@@ -39,8 +40,16 @@ def test_task_uses_amd64_web_image_and_minimum_agentcore_permission():
             "Environment": Match.array_with([
                 {"Name": "V3_AGENT_BACKEND", "Value": "agentcore"},
                 {"Name": "V3_AGENTCORE_QUALIFIER", "Value": {"Ref": "AgentRuntimeQualifier"}},
+                {"Name": "V3_VOICE_ENABLED", "Value": "1"},
+                {"Name": "V3_SECURE_COOKIE", "Value": "1"},
             ]),
         })]),
+    })
+    result.has_resource_properties("AWS::IAM::Policy", {
+        "PolicyDocument": {"Statement": Match.array_with([Match.object_like({
+            "Action": "bedrock-agentcore:InvokeAgentRuntimeWithWebSocketStream",
+            "Effect": "Allow",
+        })])},
     })
     result.has_resource_properties("AWS::IAM::Policy", {
         "PolicyDocument": {"Statement": Match.array_with([Match.object_like({

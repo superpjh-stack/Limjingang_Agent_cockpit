@@ -22,3 +22,10 @@ def test_agentcore_requires_runtime_gateway_and_model(monkeypatch):
 
 def test_agentcore_settings_are_valid():
     V3Settings(backend="agentcore", model_id="model", runtime_arn="arn:aws:test", gateway_url="https://example.invalid").validate()
+
+
+def test_voice_requires_runtime_and_short_url_expiry():
+    with pytest.raises(ConfigurationError, match="V3_VOICE_RUNTIME_ARN"):
+        V3Settings(voice_enabled=True).validate()
+    with pytest.raises(ConfigurationError, match="30~300"):
+        V3Settings(voice_url_ttl_seconds=301).validate()

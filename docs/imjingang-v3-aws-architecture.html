@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="임진강김치 V3 AWS AgentCore와 ECS Fargate 배포 아키텍처">
+  <meta name="description" content="임진강김치 V3 AWS AgentCore, ECS Fargate, 실시간 한국어 음성 배포 아키텍처">
   <title>임진강김치 V3 | AWS 아키텍처</title>
   <style>
     :root {
@@ -383,13 +383,13 @@
         <p class="eyebrow">AWS Seoul Region</p>
         <h1>제조 근거를 지키는 Agent 아키텍처</h1>
       </div>
-      <p>React와 FastAPI가 ECS에서 실행되고, 최소 권한으로 AgentCore Runtime과 Bedrock을 호출합니다.</p>
+      <p>CloudFront HTTPS의 React·FastAPI와 AgentCore WebSocket이 텍스트 및 실시간 한국어 음성을 최소 권한으로 처리합니다.</p>
     </section>
 
     <section class="shell status-strip" aria-label="현재 배포 상태">
       <div class="status-item"><span>REGION</span><strong>ap-northeast-2</strong></div>
       <div class="status-item"><span>ECS SERVICE</span><strong class="healthy">ACTIVE 1 / 1</strong></div>
-      <div class="status-item"><span>AGENT MODE</span><strong>AgentCore</strong></div>
+      <div class="status-item"><span>AGENT MODE</span><strong>Text + Voice</strong></div>
       <div class="status-item"><span>DATA BOUNDARY</span><strong>읽기 전용 샘플</strong></div>
     </section>
 
@@ -421,7 +421,7 @@
               <article class="node client primary">
                 <span class="service">Browser</span>
                 <strong>현장 사용자</strong>
-                <small>React 화면<br>HTTP 요청</small>
+                <small>React 화면<br>HTTPS + WSS / PCM16</small>
               </article>
               <div class="flow-arrow" aria-hidden="true"></div>
             </div>
@@ -430,6 +430,12 @@
           <div class="zone" data-path="data">
             <p class="zone-label">Public edge</p>
             <div class="edge-column">
+              <article class="node primary">
+                <span class="service">Amazon CloudFront</span>
+                <strong>Public HTTPS</strong>
+                <small>마이크 보안 컨텍스트<br>동일 출처 API</small>
+              </article>
+              <div class="flow-down" aria-hidden="true"></div>
               <article class="node primary">
                 <span class="service">Application Load Balancer</span>
                 <strong>Public HTTP :80</strong>
@@ -476,7 +482,7 @@
                   <article class="node" data-path="control">
                     <span class="service">ECS Task Role</span>
                     <strong>최소 호출 권한</strong>
-                    <small>InvokeAgentRuntime<br>Runtime + Endpoint 한정</small>
+                    <small>Text invoke + WSS presign<br>지정 Runtime 한정</small>
                   </article>
                 </div>
               </div>
@@ -497,6 +503,16 @@
                   <span class="service">Amazon Bedrock</span>
                   <strong>Nova 2 Lite</strong>
                   <small>global inference profile</small>
+                </article>
+                <article class="node primary">
+                  <span class="service">AgentCore Voice Runtime</span>
+                  <strong>ImjingangVoiceV3Live</strong>
+                  <small>/ws 양방향 스트리밍<br>오디오 비저장</small>
+                </article>
+                <article class="node">
+                  <span class="service">Transcribe + Polly</span>
+                  <strong>ko-KR · Seoyeon</strong>
+                  <small>PCM16 전사·합성<br>ap-northeast-2</small>
                 </article>
                 <div class="flow-return" aria-hidden="true"></div>
               </div>
@@ -531,6 +547,9 @@
             <div><h3>화면에서 질문 전송</h3><p>React가 선택한 LOT와 질문을 동일 출처의 FastAPI `/api/chat`으로 보냅니다.</p></div>
           </article>
           <article class="flow-step">
+            <div><h3>실시간 음성 왕복</h3><p>브라우저 PCM을 WSS로 전송하고 Transcribe 최종 전사를 같은 Text Agent에 질의한 뒤 Polly PCM 답변을 즉시 재생합니다.</p></div>
+          </article>
+          <article class="flow-step">
             <div><h3>입력과 LOT 일치 검증</h3><p>FastAPI가 질문 길이, 세션, LOT 형식과 실제 샘플 레코드 존재 여부를 확인합니다.</p></div>
           </article>
           <article class="flow-step">
@@ -552,6 +571,7 @@
             <li>운영 ERP, IoT, 고객 개인정보 미연결</li>
             <li>AgentCore 장애 시 데모 답변으로 자동 전환하지 않음</li>
             <li>샘플 기록은 실제 승인 근거로 사용할 수 없음</li>
+            <li>입력·출력 원본 음성과 서명 URL을 저장하지 않음</li>
           </ul>
         </aside>
       </div>
@@ -567,10 +587,11 @@
           <h3>CloudFormation 관리 자원</h3>
           <p>기존 AgentCore 자원은 보존하고 웹 서비스 스택을 별도로 배포했습니다.</p>
           <div class="resource-list">
-            <div class="resource"><code>imjingang-agentcore-v3</code><span>Runtime, Endpoint, Gateway, ECR</span></div>
-            <div class="resource"><code>imjingang-ecs-web-v3</code><span>VPC, ALB, ECS, IAM, Logs</span></div>
-            <div class="resource"><code>v3-web</code><span>AMD64 웹 컨테이너 이미지</span></div>
+            <div class="resource"><code>imjingang-agentcore-v3</code><span>Text·Voice Runtime, Endpoint, Gateway, ECR</span></div>
+            <div class="resource"><code>imjingang-ecs-web-v3</code><span>CloudFront, VPC, ALB, ECS, IAM, Logs</span></div>
+            <div class="resource"><code>voice-v3</code><span>AMD64 웹 + ARM64 Voice 이미지</span></div>
             <div class="resource"><code>ImjingangV3Live</code><span>AgentCore Runtime Endpoint</span></div>
+            <div class="resource"><code>ImjingangVoiceV3Live</code><span>AgentCore Voice Endpoint</span></div>
           </div>
         </article>
         <div class="inventory-side">
@@ -588,17 +609,17 @@
 
     <aside class="shell notice">
       <div>
-        <strong>현재는 공개 HTTP 테스트 환경입니다.</strong>
-        <p>민감정보를 입력하지 마세요. 운영 전 HTTPS, 인증, WAF, 영속 PostgreSQL을 추가해야 합니다.</p>
+        <strong>현재는 CloudFront HTTPS 테스트 환경입니다.</strong>
+        <p>마이크 사용과 WSS는 암호화되며, 운영 전 사용자 인증, WAF, 영속 PostgreSQL을 추가해야 합니다.</p>
       </div>
-      <a class="url" href="http://imjing-WebSe-ee3yHxBjsjKN-1271617388.ap-northeast-2.elb.amazonaws.com">배포 서버 열기</a>
+      <a class="url" href="https://drtz3xgay0avu.cloudfront.net">음성 지원 서버 열기</a>
     </aside>
   </main>
 
   <footer>
     <div class="shell">
       <span>임진강김치 제조 AI Agent V3</span>
-      <span>Architecture snapshot: 2026-10-27</span>
+      <span>Architecture snapshot: 2026-10-28</span>
     </div>
   </footer>
 

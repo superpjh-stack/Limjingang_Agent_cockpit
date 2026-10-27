@@ -1,5 +1,7 @@
 import {FormEvent,useEffect,useMemo,useRef,useState} from 'react';
 import {api,type Answer,type Workspace} from './types';
+import {useRealtimeVoice} from './voice/useRealtimeVoice';
+import {VoicePanel} from './voice/VoicePanel';
 
 type Message={role:'user'|'assistant';text:string;answer?:Answer};
 
@@ -13,6 +15,7 @@ export default function App(){
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const abort=useRef<AbortController|null>(null);
+  const voice=useRealtimeVoice({lotId:lot,onUser:text=>setMessages(items=>[...items,{role:'user',text}]),onAnswer:answer=>setMessages(items=>[...items,{role:'assistant',text:answer.text,answer}])});
   useEffect(()=>{api<Workspace>('/workspace').then(setWorkspace).catch(e=>setError(e.message))},[]);
   const suggestions=useMemo(()=>workspace?Object.values(workspace.questions).flat():[],[workspace]);
 
@@ -27,7 +30,7 @@ export default function App(){
     finally{if(!controller.signal.aborted)setBusy(false)}
   }
   function submit(event:FormEvent){event.preventDefault();void ask(question)}
-  async function reset(){abort.current?.abort();setBusy(false);setMessages([]);setError('');await api('/chat/reset',{method:'POST'}).catch(()=>{})}
+  async function reset(){abort.current?.abort();await voice.stop();setBusy(false);setMessages([]);setError('');await api('/chat/reset',{method:'POST'}).catch(()=>{})}
   if(error&&!workspace)return <main className="fatal"><h1>V3 연결 실패</h1><p>{error}</p><button onClick={()=>location.reload()}>다시 연결</button></main>;
   if(!workspace)return <main className="fatal"><p>임진강김치 V3를 준비하고 있습니다…</p></main>;
 
@@ -48,7 +51,8 @@ export default function App(){
         {busy&&<article className="assistant"><span>A3</span><div><p className="thinking">근거를 확인하고 있습니다<span>•••</span></p></div></article>}
       </div>
       {error&&<div className="error" role="alert">{error}<button onClick={()=>setError('')}>닫기</button></div>}
-      <form onSubmit={submit}><textarea value={question} onChange={e=>setQuestion(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void ask(question)}}} placeholder={lot?`${lot} 기준으로 질문하세요`:'제조 기록에 질문하세요'} maxLength={2000}/><div><small>{workspace.meta.demo_data?'2026년 9월 샘플 · 자동 승인/제어 없음':'운영 데이터'}</small><button disabled={busy||!question.trim()}>{busy?'조회 중':'질문 보내기'}</button></div></form>
+      {(voice.active||voice.state==='error')&&<VoicePanel state={voice.state} partial={voice.partial} answer={voice.answer} error={voice.error} level={voice.level} onStop={()=>void voice.stop()}/>}
+      <form onSubmit={submit}><textarea value={question} onChange={e=>setQuestion(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void ask(question)}}} placeholder={lot?`${lot} 기준으로 질문하세요`:'제조 기록에 질문하세요'} maxLength={2000}/><div><small>{workspace.meta.demo_data?'2026년 9월 샘플 · 자동 승인/제어 없음':'운영 데이터'}</small><div className="composer-actions">{workspace.meta.voice_enabled&&!voice.active&&<button className="voice-start" type="button" onClick={()=>void voice.start()}>● 음성 대화</button>}<button disabled={busy||!question.trim()}>{busy?'조회 중':'질문 보내기'}</button></div></div></form>
     </main>
   </div>
 }

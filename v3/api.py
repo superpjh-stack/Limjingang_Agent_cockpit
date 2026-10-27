@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import threading
+import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -18,7 +21,8 @@ from v3 import __version__
 from v3.aws import AgentCoreClient, AgentCoreError
 from v3.backends import AgentCoreBackend, DemoBackend
 from v3.config import V3Settings
-from v3.contracts import AgentRequest, ChatRequest, utc_stamp
+from v3.contracts import AgentRequest, ChatRequest, VoiceSessionRequest, VoiceSessionResponse, utc_stamp
+from v3.aws.voice_session import VoiceSessionError, VoiceSessionSigner
 from v3.observability import audit
 
 
@@ -27,11 +31,40 @@ load_dotenv(ROOT / ".env")
 LOT_PATTERN = re.compile(r"(?:RAW|SORT|SALT|MIX|FERM|PACK)-\d{6}-\d{3}")
 
 
+class _VoiceTicketLimiter:
+    def __init__(self, limit: int = 6, window: int = 60) -> None:
+        self.limit, self.window = limit, window
+        self.requests: dict[str, deque[float]] = defaultdict(deque)
+        self.lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        now = time.monotonic()
+        with self.lock:
+            values = self.requests[key]
+            while values and values[0] <= now - self.window:
+                values.popleft()
+            if len(values) >= self.limit:
+                return False
+            values.append(now)
+            return True
+
+
+def _valid_voice_origin(request: Request) -> bool:
+    origin = request.headers.get("origin")
+    if not origin:
+        return True
+    from urllib.parse import urlparse
+    parsed = urlparse(origin)
+    host = (parsed.hostname or "").lower()
+    request_host = request.headers.get("x-forwarded-host", request.url.hostname or "").split(":", 1)[0].lower()
+    return parsed.scheme == "https" and (host == request_host or host.endswith(".cloudfront.net"))
+
+
 def _repository(settings: V3Settings):
     return create_repository(ROOT / settings.sqlite_path)
 
 
-def create_app(repository: Any | None = None, settings: V3Settings | None = None, backend: Any | None = None) -> FastAPI:
+def create_app(repository: Any | None = None, settings: V3Settings | None = None, backend: Any | None = None, voice_signer: Any | None = None) -> FastAPI:
     settings = settings or V3Settings.from_env()
 
     @asynccontextmanager
@@ -47,10 +80,18 @@ def create_app(repository: Any | None = None, settings: V3Settings | None = None
             )
         else:
             app.state.agent = DemoBackend(app.state.repo, settings.aws_region)
+        app.state.voice_signer = voice_signer
+        if settings.voice_enabled and app.state.voice_signer is None:
+            app.state.voice_signer = VoiceSessionSigner(
+                settings.voice_runtime_arn,
+                settings.aws_region,
+                settings.voice_url_ttl_seconds,
+            )
         yield
 
     app = FastAPI(title="임진강김치 AWS AgentCore V3", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    app.state.voice_ticket_limiter = _VoiceTicketLimiter()
 
     @app.get("/api/health")
     def health(request: Request):
@@ -90,8 +131,29 @@ def create_app(repository: Any | None = None, settings: V3Settings | None = None
                 "demo_data": True,
                 "as_of": "2026-09-04 13:10",
                 "retrieved_at": utc_stamp(),
+                "voice_enabled": settings.voice_enabled,
             },
         }
+
+    @app.post("/api/voice/session", response_model=VoiceSessionResponse)
+    def voice_session(body: VoiceSessionRequest, request: Request):
+        if not settings.voice_enabled:
+            raise HTTPException(404, "실시간 음성 기능이 비활성화되어 있습니다.")
+        if not _valid_voice_origin(request):
+            raise HTTPException(403, "허용되지 않은 음성 세션 요청입니다.")
+        client_ip = request.client.host if request.client else "unknown"
+        if not request.app.state.voice_ticket_limiter.allow(client_ip):
+            raise HTTPException(429, "음성 세션 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.")
+        if body.lot_id and not request.app.state.repo.lot_trace(body.lot_id):
+            raise HTTPException(404, "LOT를 찾을 수 없습니다.")
+        session_id = secrets.token_hex(24)
+        try:
+            url = request.app.state.voice_signer.create_url(session_id)
+        except VoiceSessionError as exc:
+            audit("voice_session_failed", request_id=secrets.token_hex(12), backend=settings.backend, error_type="voice_session")
+            raise HTTPException(503, str(exc)) from exc
+        audit("voice_session_created", request_id=secrets.token_hex(12), session_id=session_id, backend=settings.backend, ok=True)
+        return VoiceSessionResponse(session_id=session_id, url=url, expires_in=settings.voice_url_ttl_seconds)
 
     @app.get("/api/lots/{lot_id}")
     def lot(lot_id: str, request: Request):

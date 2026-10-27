@@ -16,6 +16,16 @@ class ChatRequest(BaseModel):
     session_id: str | None = Field(default=None, max_length=160)
 
 
+class VoiceSessionRequest(BaseModel):
+    lot_id: str | None = Field(default=None, max_length=80)
+
+
+class VoiceSessionResponse(BaseModel):
+    session_id: str
+    url: str
+    expires_in: int
+
+
 class AgentRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2200)
     session_id: str = Field(min_length=16, max_length=160)

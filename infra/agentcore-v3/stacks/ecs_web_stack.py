@@ -3,6 +3,8 @@ from __future__ import annotations
 import aws_cdk as cdk
 from aws_cdk import (
     aws_ec2 as ec2,
+    aws_cloudfront as cloudfront,
+    aws_cloudfront_origins as origins,
     aws_ecr as ecr,
     aws_ecs as ecs,
     aws_ecs_patterns as ecs_patterns,
@@ -20,6 +22,8 @@ class EcsWebV3Stack(cdk.Stack):
         image_tag = cdk.CfnParameter(self, "WebImageTag", type="String", default="v3-web")
         runtime_arn = cdk.CfnParameter(self, "AgentRuntimeArn", type="String")
         runtime_qualifier = cdk.CfnParameter(self, "AgentRuntimeQualifier", type="String", default="ImjingangV3Live")
+        voice_runtime_arn = cdk.CfnParameter(self, "VoiceRuntimeArn", type="String")
+        voice_runtime_qualifier = cdk.CfnParameter(self, "VoiceRuntimeQualifier", type="String", default="ImjingangVoiceV3Live")
         gateway_url = cdk.CfnParameter(self, "AgentCoreGatewayUrl", type="String")
         model_id = cdk.CfnParameter(self, "BedrockModelId", type="String", default="global.amazon.nova-2-lite-v1:0")
 
@@ -54,6 +58,14 @@ class EcsWebV3Stack(cdk.Stack):
                 cdk.Fn.join("", [runtime_arn.value_as_string, "/runtime-endpoint/", runtime_qualifier.value_as_string]),
             ],
         ))
+        task_role.add_to_policy(iam.PolicyStatement(
+            actions=["bedrock-agentcore:InvokeAgentRuntimeWithWebSocketStream"],
+            resources=[
+                voice_runtime_arn.value_as_string,
+                cdk.Fn.join("", [voice_runtime_arn.value_as_string, "/runtime-endpoint/DEFAULT"]),
+                cdk.Fn.join("", [voice_runtime_arn.value_as_string, "/runtime-endpoint/", voice_runtime_qualifier.value_as_string]),
+            ],
+        ))
         task_definition = ecs.FargateTaskDefinition(
             self,
             "TaskDefinition",
@@ -76,8 +88,12 @@ class EcsWebV3Stack(cdk.Stack):
                 "V3_AGENTCORE_RUNTIME_ARN": runtime_arn.value_as_string,
                 "V3_AGENTCORE_QUALIFIER": runtime_qualifier.value_as_string,
                 "V3_AGENTCORE_GATEWAY_URL": gateway_url.value_as_string,
+                "V3_VOICE_ENABLED": "1",
+                "V3_VOICE_RUNTIME_ARN": voice_runtime_arn.value_as_string,
+                "V3_VOICE_RUNTIME_QUALIFIER": voice_runtime_qualifier.value_as_string,
+                "V3_VOICE_URL_TTL_SECONDS": "60",
                 "V3_REQUEST_TIMEOUT": "120",
-                "V3_SECURE_COOKIE": "0",
+                "V3_SECURE_COOKIE": "1",
                 "V3_SQLITE_PATH": "/tmp/imjingang_v3_demo.db",
             },
             health_check=ecs.HealthCheck(
@@ -114,7 +130,35 @@ class EcsWebV3Stack(cdk.Stack):
             unhealthy_threshold_count=5,
         )
 
+        response_headers = cloudfront.ResponseHeadersPolicy(
+            self,
+            "VoiceSecurityHeaders",
+            security_headers_behavior=cloudfront.ResponseSecurityHeadersBehavior(
+                content_type_options=cloudfront.ResponseHeadersContentTypeOptions(override=True),
+                frame_options=cloudfront.ResponseHeadersFrameOptions(frame_option=cloudfront.HeadersFrameOption.DENY, override=True),
+                referrer_policy=cloudfront.ResponseHeadersReferrerPolicy(referrer_policy=cloudfront.HeadersReferrerPolicy.SAME_ORIGIN, override=True),
+                strict_transport_security=cloudfront.ResponseHeadersStrictTransportSecurity(access_control_max_age=cdk.Duration.days(365), include_subdomains=True, override=True),
+            ),
+            custom_headers_behavior=cloudfront.ResponseCustomHeadersBehavior(
+                custom_headers=[cloudfront.ResponseCustomHeader(header="Permissions-Policy", value="microphone=(self)", override=True)]
+            ),
+        )
+        distribution = cloudfront.Distribution(
+            self,
+            "WebDistribution",
+            default_behavior=cloudfront.BehaviorOptions(
+                origin=origins.LoadBalancerV2Origin(service.load_balancer, protocol_policy=cloudfront.OriginProtocolPolicy.HTTP_ONLY),
+                allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
+                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
+                origin_request_policy=cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+                response_headers_policy=response_headers,
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            ),
+            comment="HTTPS entry point for Imjingang V3 text and realtime voice",
+        )
+
         cdk.CfnOutput(self, "EcsWebUrl", value=cdk.Fn.join("", ["http://", service.load_balancer.load_balancer_dns_name]))
         cdk.CfnOutput(self, "EcsClusterName", value=cluster.cluster_name)
         cdk.CfnOutput(self, "EcsServiceName", value=service.service.service_name)
         cdk.CfnOutput(self, "AlbDnsName", value=service.load_balancer.load_balancer_dns_name)
+        cdk.CfnOutput(self, "EcsWebHttpsUrl", value=cdk.Fn.join("", ["https://", distribution.distribution_domain_name]))

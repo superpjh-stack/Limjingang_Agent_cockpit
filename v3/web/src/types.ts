@@ -4,7 +4,7 @@ export type Evidence={filename?:string;document_id?:string;text?:string;content?
 export type Workspace={
   kpi:Record<string,number>;lots:Lot[];inventory:Row[];ccp:Row[];shipments:Row[];
   questions:Record<string,string[]>;
-  meta:{company:string;version:string;agent_platform:string;backend:'demo'|'agentcore';region:string;model:string;database:string;demo_data:boolean;as_of:string;retrieved_at:string};
+  meta:{company:string;version:string;agent_platform:string;backend:'demo'|'agentcore';region:string;model:string;database:string;demo_data:boolean;voice_enabled:boolean;as_of:string;retrieved_at:string};
 };
 export type Answer={text:string;sources:string[];evidence:Evidence[];data_tools:string[];records:Row[];session_id:string;mode:'demo'|'agentcore';demo_data:boolean;region:string;model:string;retrieved_at:string};
 

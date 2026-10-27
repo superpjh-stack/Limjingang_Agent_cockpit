@@ -1,0 +1,12 @@
+.composer-actions{display:flex;gap:8px}
+.chat form .voice-start{background:#eee5d4;color:#654c21;border:1px solid #d7c29a}
+.voice-panel{margin:0 7vw 12px;padding:14px 16px;background:#10271f;color:#f5f0de;border:1px solid #355047;border-radius:12px;box-shadow:0 10px 25px #17312620}
+.voice-head,.voice-head>div{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.voice-head i{width:10px;height:10px;border-radius:50%;background:#67d296;box-shadow:0 0 0 6px #67d29622;transition:transform .1s}
+.voice-head button{border:1px solid #597066;background:transparent;color:#dce6df;padding:7px 10px}
+.voice-panel p{min-height:24px;margin:12px 0 8px;color:#d4ded7}
+.voice-bars{height:34px;display:flex;align-items:center;gap:3px;overflow:hidden}
+.voice-bars span{width:3px;min-height:5px;background:#d7b36c;border-radius:3px;transition:height .08s}
+.voice-panel.thinking .voice-head i{background:#e4ac45}
+.voice-panel.error{background:#4a211e;border-color:#85453e}
+@media(max-width:800px){.voice-panel{margin:0 10px 10px}.chat form .voice-start{padding:9px}.chat form small{display:none}}

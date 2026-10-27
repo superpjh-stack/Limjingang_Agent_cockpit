@@ -12,9 +12,13 @@ class AgentCoreV3Stack(cdk.Stack):
 
         model_id = cdk.CfnParameter(self, "BedrockModelId", type="String", description="Bedrock model ID available in this region")
         image_tag = cdk.CfnParameter(self, "RuntimeImageTag", type="String", default="v3")
+        voice_image_tag = cdk.CfnParameter(self, "VoiceImageTag", type="String", default="v3-voice")
+        text_runtime_arn = cdk.CfnParameter(self, "TextRuntimeArn", type="String", default="unused", description="Existing text Runtime ARN used by the optional voice Runtime")
         enable_runtime = cdk.CfnParameter(self, "EnableAgentCoreRuntime", type="String", default="false", allowed_values=["true", "false"])
+        enable_voice = cdk.CfnParameter(self, "EnableVoiceRuntime", type="String", default="false", allowed_values=["true", "false"])
         enable_memory = cdk.CfnParameter(self, "EnableAgentCoreMemory", type="String", default="false", allowed_values=["true", "false"])
         runtime_condition = cdk.CfnCondition(self, "CreateRuntime", expression=cdk.Fn.condition_equals(enable_runtime.value_as_string, "true"))
+        voice_condition = cdk.CfnCondition(self, "CreateVoiceRuntime", expression=cdk.Fn.condition_equals(enable_voice.value_as_string, "true"))
 
         repository = ecr.Repository(
             self,
@@ -26,6 +30,13 @@ class AgentCoreV3Stack(cdk.Stack):
         web_repository = ecr.Repository(
             self,
             "WebRepository",
+            image_scan_on_push=True,
+            encryption=ecr.RepositoryEncryption.AES_256,
+            removal_policy=cdk.RemovalPolicy.RETAIN,
+        )
+        voice_repository = ecr.Repository(
+            self,
+            "VoiceRepository",
             image_scan_on_push=True,
             encryption=ecr.RepositoryEncryption.AES_256,
             removal_policy=cdk.RemovalPolicy.RETAIN,
@@ -87,6 +98,63 @@ class AgentCoreV3Stack(cdk.Stack):
         endpoint.node.add_dependency(runtime)
         endpoint.cfn_options.condition = runtime_condition
 
+        voice_role = iam.Role(
+            self,
+            "VoiceRuntimeRole",
+            assumed_by=iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            description="Least-privilege role for Korean bidirectional voice runtime",
+        )
+        voice_role.add_to_policy(iam.PolicyStatement(
+            actions=["transcribe:StartStreamTranscription", "polly:SynthesizeSpeech"],
+            resources=["*"],
+        ))
+        voice_role.add_to_policy(iam.PolicyStatement(
+            actions=["bedrock-agentcore:InvokeAgentRuntime"],
+            resources=[
+                text_runtime_arn.value_as_string,
+                cdk.Fn.join("", [text_runtime_arn.value_as_string, "/runtime-endpoint/ImjingangV3Live"]),
+            ],
+        ))
+        voice_repository.grant_pull(voice_role)
+
+        voice_runtime = cdk.CfnResource(
+            self,
+            "VoiceRuntime",
+            type="AWS::BedrockAgentCore::Runtime",
+            properties={
+                "AgentRuntimeArtifact": {"ContainerConfiguration": {"ContainerUri": cdk.Fn.join("", [voice_repository.repository_uri, ":", voice_image_tag.value_as_string])}},
+                "AgentRuntimeName": "ImjingangManufacturingVoiceV3",
+                "Description": "Korean streaming voice gateway for the read-only manufacturing agent",
+                "EnvironmentVariables": {
+                    "AWS_REGION": self.region,
+                    "V3_AGENTCORE_RUNTIME_ARN": text_runtime_arn.value_as_string,
+                    "V3_AGENTCORE_QUALIFIER": "ImjingangV3Live",
+                },
+                "LifecycleConfiguration": {"IdleRuntimeSessionTimeout": 900, "MaxLifetime": 28800},
+                "NetworkConfiguration": {"NetworkMode": "PUBLIC"},
+                "ProtocolConfiguration": "HTTP",
+                "RoleArn": voice_role.role_arn,
+                "Tags": {"Application": "imjingang-agentcore-v3", "AudioStorage": "disabled", "DataAccess": "read-only"},
+            },
+        )
+        voice_runtime.node.add_dependency(voice_role)
+        voice_runtime.cfn_options.condition = voice_condition
+
+        voice_endpoint = cdk.CfnResource(
+            self,
+            "VoiceRuntimeEndpoint",
+            type="AWS::BedrockAgentCore::RuntimeEndpoint",
+            properties={
+                "AgentRuntimeId": voice_runtime.get_att("AgentRuntimeId"),
+                "AgentRuntimeVersion": voice_runtime.get_att("AgentRuntimeVersion"),
+                "Name": "ImjingangVoiceV3Live",
+                "Description": "Versioned endpoint for Korean realtime voice",
+                "Tags": {"Application": "imjingang-agentcore-v3"},
+            },
+        )
+        voice_endpoint.node.add_dependency(voice_runtime)
+        voice_endpoint.cfn_options.condition = voice_condition
+
         gateway = cdk.CfnResource(
             self,
             "Gateway",
@@ -120,4 +188,8 @@ class AgentCoreV3Stack(cdk.Stack):
         cdk.CfnOutput(self, "RuntimeRepositoryUri", value=repository.repository_uri)
         cdk.CfnOutput(self, "WebRepositoryUri", value=web_repository.repository_uri)
         cdk.CfnOutput(self, "WebRepositoryName", value=web_repository.repository_name)
+        cdk.CfnOutput(self, "VoiceRepositoryUri", value=voice_repository.repository_uri)
+        cdk.CfnOutput(self, "VoiceRepositoryName", value=voice_repository.repository_name)
+        cdk.CfnOutput(self, "VoiceRuntimeArn", value=voice_runtime.get_att("AgentRuntimeArn").to_string(), condition=voice_condition)
+        cdk.CfnOutput(self, "VoiceRuntimeEndpointArn", value=voice_endpoint.get_att("AgentRuntimeEndpointArn").to_string(), condition=voice_condition)
         cdk.CfnOutput(self, "MemoryId", value=memory.get_att("MemoryId").to_string(), condition=memory_condition)
