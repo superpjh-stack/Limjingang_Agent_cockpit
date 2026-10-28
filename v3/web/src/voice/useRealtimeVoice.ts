@@ -17,8 +17,20 @@ export function useRealtimeVoice({lotId,onUser,onAnswer}:Options){
   const speaking=useRef(false);
   const loudSince=useRef(0);
   const playbackTimer=useRef<number|null>(null);
+  const intentionalClose=useRef(false);
+
+  function publicVoiceError(error:unknown){
+    if(error instanceof DOMException){
+      if(error.name==='NotAllowedError')return '마이크 권한이 차단되었습니다. 주소창 왼쪽의 사이트 설정에서 마이크를 허용한 뒤 다시 시도해 주세요.';
+      if(error.name==='NotFoundError')return '사용 가능한 마이크를 찾지 못했습니다. 마이크 연결 상태를 확인해 주세요.';
+      if(error.name==='NotReadableError')return '마이크를 사용할 수 없습니다. 다른 앱의 마이크 사용을 종료한 뒤 다시 시도해 주세요.';
+      if(error.name==='SecurityError')return '보안 설정 때문에 마이크를 열 수 없습니다. HTTPS와 브라우저 사이트 권한을 확인해 주세요.';
+    }
+    return error instanceof Error?error.message:'마이크를 시작하지 못했습니다.';
+  }
 
   const stop=useCallback(async()=>{
+    intentionalClose.current=true;
     const ws=socket.current;
     if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'session.end'}));
     socket.current=null;ws?.close();await mic.current?.stop();mic.current=null;
@@ -28,11 +40,31 @@ export function useRealtimeVoice({lotId,onUser,onAnswer}:Options){
 
   const start=useCallback(async()=>{
     if(socket.current)return;
+    intentionalClose.current=false;
     dispatch({type:'state',state:'connecting'});
     try{
+      let ws:WebSocket|null=null;
+      mic.current=new MicrophoneCapture();
+      await mic.current.start((audio,level)=>{
+        dispatch({type:'level',level});
+        const outputPlaying=speaking.current||player.current.isPlaying();
+        if(outputPlaying&&level>.12){
+          if(!loudSince.current)loudSince.current=Date.now();
+          if(Date.now()-loudSince.current>800){
+            player.current.cancel();speaking.current=false;
+            if(playbackTimer.current!==null)window.clearTimeout(playbackTimer.current);playbackTimer.current=null;
+            if(ids.current.response&&ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'response.cancel',response_id:ids.current.response}));
+            dispatch({type:'state',state:'listening'});loudSince.current=0;
+          }
+        }else loudSince.current=0;
+        if(outputPlaying&&(speaking.current||player.current.isPlaying()))return;
+        if(!ws||ws.readyState!==WebSocket.OPEN)return;
+        if(!ids.current.utterance)ids.current.utterance=crypto.randomUUID();
+        ws.send(JSON.stringify({type:'audio.chunk',utterance_id:ids.current.utterance,sequence:ids.current.sequence++,audio}));
+      });
       const ticket=await api<SessionTicket>('/voice/session',{method:'POST',body:JSON.stringify({lot_id:lotId||null})});
       ids.current={session:ticket.session_id,utterance:'',response:'',sequence:0};
-      const ws=new WebSocket(ticket.url);socket.current=ws;
+      ws=new WebSocket(ticket.url);socket.current=ws;
       await new Promise<void>((resolve,reject)=>{
         const timeout=window.setTimeout(()=>reject(new Error('음성 연결 시간이 초과되었습니다.')),10000);
         ws.onopen=()=>{window.clearTimeout(timeout);resolve()};
@@ -57,26 +89,10 @@ export function useRealtimeVoice({lotId,onUser,onAnswer}:Options){
         }
         if(data.type==='error')dispatch({type:'error',message:data.message||'음성 처리 중 오류가 발생했습니다.'});
       };
-      ws.onclose=()=>{socket.current=null;void mic.current?.stop();mic.current=null;dispatch({type:'reset'})};
+      ws.onclose=()=>{socket.current=null;void mic.current?.stop();mic.current=null;if(!intentionalClose.current)dispatch({type:'error',message:'음성 연결이 종료되었습니다. 다시 연결해 주세요.'})};
       ws.send(JSON.stringify({type:'session.start',session_id:ticket.session_id,lot_id:lotId||null}));
-      mic.current=new MicrophoneCapture();
-      await mic.current.start((audio,level)=>{
-        dispatch({type:'level',level});
-        if((speaking.current||player.current.isPlaying())&&level>.12){
-          if(!loudSince.current)loudSince.current=Date.now();
-          if(Date.now()-loudSince.current>800){
-            player.current.cancel();speaking.current=false;
-            if(playbackTimer.current!==null)window.clearTimeout(playbackTimer.current);playbackTimer.current=null;
-            if(ids.current.response)ws.send(JSON.stringify({type:'response.cancel',response_id:ids.current.response}));
-            dispatch({type:'state',state:'listening'});loudSince.current=0;
-          }
-        }else loudSince.current=0;
-        if(ws.readyState!==WebSocket.OPEN)return;
-        if(!ids.current.utterance)ids.current.utterance=crypto.randomUUID();
-        ws.send(JSON.stringify({type:'audio.chunk',session_id:ids.current.session,utterance_id:ids.current.utterance,sequence:ids.current.sequence++,audio}));
-      });
       dispatch({type:'state',state:'listening'});
-    }catch(error){await stop();dispatch({type:'error',message:error instanceof Error?error.message:'마이크를 시작하지 못했습니다.'})}
+    }catch(error){await stop();dispatch({type:'error',message:publicVoiceError(error)})}
   },[lotId,onAnswer,onUser,stop]);
 
   useEffect(()=>()=>{void stop()},[stop]);

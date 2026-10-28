@@ -6,6 +6,7 @@ export class MicrophoneCapture{
   async start(onFrame:FrameHandler){
     this.stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
     this.context=new AudioContext();
+    await this.context.resume();
     await this.context.audioWorklet.addModule('/pcm-processor.js');
     const source=this.context.createMediaStreamSource(this.stream);
     const worklet=new AudioWorkletNode(this.context,'pcm-processor');
