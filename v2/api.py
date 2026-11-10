@@ -33,7 +33,7 @@ class Question(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     lot_id: str | None = Field(default=None, max_length=80)
     work_id: str | None = Field(default=None, max_length=80)
-    mode: str = Field(default='ai', pattern='^ai$')
+    mode: str = Field(default='demo', pattern='^(demo|ai)$')
 
 
 class Speech(BaseModel):
@@ -41,7 +41,7 @@ class Speech(BaseModel):
 
 
 class RealtimeToolCall(BaseModel):
-    name: str = Field(pattern='^(list_tags|get_latest|get_readings|get_ccp_excursions)$')
+    name: str = Field(pattern='^(search_knowledge|get_lot_trace|get_fermentation_status|get_ccp_deviations|get_inventory_status|get_shipment_readiness|get_process_measurements|list_tags|get_latest|get_readings|get_ccp_excursions)$')
     arguments: dict = Field(default_factory=dict)
 
 
@@ -182,7 +182,9 @@ def create_app(repository=None, static_dir: Path | None = None):
         expected = os.getenv('COCKPIT_ACCESS_TOKEN', '')
         if not os.getenv('OPENAI_API_KEY', ''):
             raise HTTPException(503, '서버에 OpenAI API 키를 설정해야 합니다.')
-        if local_ai_allowed(request):
+        # Loopback requests may skip the browser token only when explicitly enabled.
+        # This keeps local convenience from becoming an accidental production bypass.
+        if local_ai_allowed(request) and os.getenv('V2_LOCAL_AI_NO_TOKEN') == '1':
             return os.environ['OPENAI_API_KEY']
         if not expected:
             raise HTTPException(503, '외부 접속에서는 AI 접근 코드를 설정해야 합니다.')
@@ -195,16 +197,15 @@ def create_app(repository=None, static_dir: Path | None = None):
         if lot_id:
             if not repo.lot_trace(lot_id):
                 raise HTTPException(404, '선택한 LOT를 찾을 수 없습니다.')
-            context = lot_snapshot(repo, lot_id)
-        else:
-            context = {
-                'dashboard': repo.dashboard(),
-                'fermentation': repo.fermentation_status(None),
-                'ccp': repo.ccp_deviations(None),
-                'inventory': repo.inventory_status(None, False),
-                'shipments': repo.shipment_readiness(None),
-            }
-        return json.dumps(context, ensure_ascii=False, default=str)[:24000]
+        # Do not freeze a large operational snapshot at session creation. The
+        # voice model must call a read-only tool for current company facts.
+        return json.dumps({
+            'company': '임진강김치',
+            'product': '임진감김치',
+            'selected_lot': lot_id,
+            'data_status': '샘플 데이터이며 실시간 운영값이 아님',
+            'as_of': '2026-09-04 13:10 KST',
+        }, ensure_ascii=False)
 
     @app.post('/api/realtime/session')
     async def realtime_session(request: Request, lot_id: str | None = Query(default=None, max_length=80), authorization: str | None = Header(default=None)):
@@ -220,14 +221,19 @@ def create_app(repository=None, static_dir: Path | None = None):
         instructions = (
             '당신은 임진강김치 제조 현장의 한국어 음성 업무 도우미다. 짧고 자연스러운 존댓말로 답한다. '
             '사용자가 말을 마치면 바로 핵심부터 답하고, 필요하면 한 번에 질문 하나만 되묻는다. '
-            '아래 제공된 조회 전용 자료는 회사 기록 질문에만 사용한다. 일반 지식 질문은 알고 있는 내용으로 답한다. '
-            '현재 설비값·센서 이력·CCP 이탈 질문은 반드시 제공된 데이터 플랫폼 도구를 호출한다. 설비 코드를 모르면 list_tags를 먼저 호출한다. '
+            '회사 기록 질문은 반드시 제공된 읽기 전용 도구를 호출한다. 최신값을 세션 시작 문맥으로 추정하지 않는다. '
+            '현재 설비값·센서 이력·CCP 이탈 질문은 데이터 플랫폼 도구를 호출하고, LOT·품질·재고·출하 질문은 임진강김치 업무 도구를 호출한다. 설비 코드를 모르면 list_tags를 먼저 호출한다. '
             '회사 기록에 없는 값은 반드시 미확인이라고 말하고 추측하지 않는다. 수치에는 단위와 KST 시각을 붙인다. 출하 승인, CCP 처분, 공정 변경을 결정하거나 실행하지 않는다. '
             'LOT·수치·상태는 잘못 들었을 수 있으므로 중요한 식별자는 짧게 재확인한다. 답변은 보통 3문장 이내로 한다.\n'
             f'현재 선택 LOT: {lot_id or "전체 기록"}\n조회 자료: {realtime_context(lot_id)}'
         )
         registry = ImjingangToolRegistry(app.state.repo)
-        realtime_tool_names = {'list_tags', 'get_latest', 'get_readings', 'get_ccp_excursions'}
+        realtime_tool_names = {
+            'search_knowledge', 'get_lot_trace', 'get_fermentation_status',
+            'get_ccp_deviations', 'get_inventory_status', 'get_shipment_readiness',
+            'get_process_measurements', 'list_tags', 'get_latest', 'get_readings',
+            'get_ccp_excursions',
+        }
         realtime_tools = [
             {key: value for key, value in definition.items() if key != 'strict'}
             for definition in registry.definitions if definition.get('name') in realtime_tool_names
@@ -335,6 +341,8 @@ def create_app(repository=None, static_dir: Path | None = None):
             answer['retrieved_at'] = stamp()
             answer['unknowns'] = []
             return app.state.work.capture(user, body.question, answer)
+        if body.mode == 'demo':
+            return finish({**demo_answer(repo, body.question, body.lot_id), 'context': {'lot_id': body.lot_id, 'as_of': stamp()}})
         client = require_ai(authorization, request)
         if not capacity.acquire(blocking=False):
             client.close()

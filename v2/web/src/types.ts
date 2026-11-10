@@ -7,7 +7,7 @@ export type TableInfo = {table:string;label:string;count:number;exists:boolean};
 export type Workspace = {kpi: Record<string,number>;lots:Lot[];fermentation:Fermentation[];ccp:Row[];inventory:Row[];shipments:Row[];rules:Rule[];tables:TableInfo[];questions:Record<string,string[]>;meta:{company:string;version:string;demo_data:boolean;as_of:string;backend:string;ai_configured:boolean;local_dev_ai?:boolean;model:string;retrieved_at:string}};
 export type Detail = {lot:Lot;trace:Lot[];fermentation:Fermentation[];ccp:Row[];shipments:Row[];measurements:Row[]};
 export type Evidence = {filename:string;document_id?:string;text:string};
-export type Answer = {answer_id?:string;captured_at?:string;summary?:string;retrieved_at?:string;context?:{lot_id:string|null;as_of:string};unknowns?:string[];text:string;sources:string[];evidence:Evidence[];data_tools:string[];records:Row[];searched_documents:boolean;mode:'ai'};
+export type Answer = {answer_id?:string;captured_at?:string;summary?:string;retrieved_at?:string;context?:{lot_id:string|null;as_of:string};unknowns?:string[];text:string;sources:string[];evidence:Evidence[];data_tools:string[];records:Row[];searched_documents:boolean;mode:'demo'|'ai'};
 export async function request<T>(path:string, init?:RequestInit):Promise<T> {
  const response = await fetch('/api'+path, init);
  if (!response.ok) {const data = await response.json().catch(()=>({})); throw new Error(typeof data.detail === 'string' ? data.detail : `요청을 처리하지 못했습니다 (${response.status}).`);}

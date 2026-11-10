@@ -110,8 +110,21 @@ def test_realtime_voice_session_is_gated_and_uses_verified_lot_context(client, m
     session = captured['request']['files']['session'][1]
     assert 'PACK-260903-001' in session
     assert 'semantic_vad' in session and 'gpt-realtime-2.1' in session
+    assert 'get_lot_trace' in session and 'get_process_measurements' in session
+    assert 'dashboard' not in session
     assert client.post('/api/realtime/session?lot_id=UNKNOWN', content='offer', headers=headers).status_code == 404
     assert client.post('/api/realtime/session', content='offer', headers={'Content-Type':'application/sdp','Authorization':'Bearer wrong'}).status_code == 401
+
+
+def test_realtime_tool_allows_manufacturing_reads_and_rejects_writes(client, monkeypatch):
+    monkeypatch.setenv('OPENAI_API_KEY', 'sk-test-realtime-secret')
+    monkeypatch.setenv('COCKPIT_ACCESS_TOKEN', 'voice-code')
+    headers = {'Authorization': 'Bearer voice-code'}
+    response = client.post('/api/realtime/tool', json={'name': 'get_lot_trace', 'arguments': {'lot_id': 'PACK-260903-001'}}, headers=headers)
+    assert response.status_code == 200
+    payload = response.json()['output']
+    assert 'RAW-260901-001' in payload
+    assert client.post('/api/realtime/tool', json={'name': 'get_table_records', 'arguments': {'table': 'lots', 'limit': 1, 'offset': 0}}, headers=headers).status_code == 422
 
 
 def test_local_development_can_use_server_ai_without_browser_token(client, monkeypatch):
