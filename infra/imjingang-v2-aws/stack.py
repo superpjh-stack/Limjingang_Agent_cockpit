@@ -74,7 +74,10 @@ class ImjingangV2WebStack(cdk.Stack):
                     "OPENAI_MODEL": "gpt-4.1-mini",
                     "OPENAI_REALTIME_MODEL": "gpt-realtime-2.1",
                     "OPENAI_REALTIME_VOICE": "marin",
-                    "V2_REQUIRE_LOGIN": "1",
+                    # The current V2 shell has no account-login screen or seeded
+                    # users. Keep the separate validation deployment usable while
+                    # retaining the AI access-code gate for OpenAI operations.
+                    "V2_REQUIRE_LOGIN": "0",
                     "V2_LOCAL_AI_NO_TOKEN": "0",
                     "V2_SQLITE_PATH": "/tmp/imjingang_v2_demo.db",
                 },
