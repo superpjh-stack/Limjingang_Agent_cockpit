@@ -8,10 +8,12 @@ data/postgres/
 data/postgres.log
 .venv-v2/
 .venv-v3/
+.venv-v2-aws/
 node_modules/
 v2/web/dist/
 v3/web/dist/
 infra/agentcore-v3/cdk.out/
+infra/imjingang-v2-aws/cdk.out/
 *.tsbuildinfo
 data/imjingang_v2_demo.db
 data/imjingang_v3_demo.db
