@@ -20,9 +20,9 @@ def client(tmp_path, monkeypatch):
 
 def test_workspace_returns_real_counts_and_no_credentials(client):
     data = client.get('/api/workspace').json()
-    assert data['kpi']['packed_kg'] == 9600
-    assert len(data['lots']) == 7
-    assert len(data['rules']) == 7
+    assert data['kpi']['packed_kg'] == sum(row['quantity_kg'] for row in data['lots'] if row['process']=='포장')
+    assert len(data['lots']) == len(client.app.state.repo.all_lots())
+    assert data['rules'] == client.app.state.repo.get_rules()
     assert not data['meta']['ai_configured']
     assert client.get('/api/health').json()['status'] == 'ok'
     assert not any(k in str(data) for k in ['OPENAI_API_KEY', 'DATABASE_URL', 'COCKPIT_ACCESS_TOKEN'])
@@ -110,7 +110,7 @@ def test_realtime_voice_session_is_gated_and_uses_verified_lot_context(client, m
     session = captured['request']['files']['session'][1]
     assert 'PACK-260903-001' in session
     assert 'semantic_vad' in session and 'gpt-realtime-2.1' in session
-    assert 'get_lot_trace' in session and 'get_process_measurements' in session
+    assert 'analyze_manufacturing_question' in session
     assert 'dashboard' not in session
     assert client.post('/api/realtime/session?lot_id=UNKNOWN', content='offer', headers=headers).status_code == 404
     assert client.post('/api/realtime/session', content='offer', headers={'Content-Type':'application/sdp','Authorization':'Bearer wrong'}).status_code == 401

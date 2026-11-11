@@ -18,10 +18,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from imjingang_agent import ImjingangRepository, ImjingangToolRegistry, ManufacturingAgent, QUESTION_GROUPS
+from imjingang_agent import ImjingangRepository, ImjingangToolRegistry, ManufacturingAgent
 from imjingang_agent.data_hub import PostgresRepository, create_repository
 from imjingang_agent.service import DEFAULT_MODEL
 from imjingang_agent.ui_helpers import lot_snapshot
+from v2.compound import analyze, resolve_lot, QUESTION_GROUPS
 from v2.metrics import create_tables, install_metrics
 from v2.work import WorkStore, install_work, stamp
 
@@ -30,6 +31,7 @@ load_dotenv(ROOT / '.env')
 
 
 class Question(BaseModel):
+    history: list[dict[str, str]] = Field(default_factory=list, max_length=12)
     question: str = Field(min_length=1, max_length=2000)
     lot_id: str | None = Field(default=None, max_length=80)
     work_id: str | None = Field(default=None, max_length=80)
@@ -41,7 +43,7 @@ class Speech(BaseModel):
 
 
 class RealtimeToolCall(BaseModel):
-    name: str = Field(pattern='^(search_knowledge|get_lot_trace|get_fermentation_status|get_ccp_deviations|get_inventory_status|get_shipment_readiness|get_process_measurements|list_tags|get_latest|get_readings|get_ccp_excursions)$')
+    name: str = Field(pattern='^(analyze_manufacturing_question|search_knowledge|get_lot_trace|get_fermentation_status|get_ccp_deviations|get_inventory_status|get_shipment_readiness|get_process_measurements|list_tags|get_latest|get_readings|get_ccp_excursions)$')
     arguments: dict = Field(default_factory=dict)
 
 
@@ -112,20 +114,36 @@ def demo_answer(repo, question: str, lot_id: str | None = None):
 
 
 class EvidenceRegistry(ImjingangToolRegistry):
-    def __init__(self, repo):
+    def __init__(self, repo, lot_id=None):
         super().__init__(repo)
-        self.records = []
-
-    def execute(self, name, arguments):
-        result = super().execute(name, arguments)
-        payload = json.loads(result)
-        if payload.get('status') == 'ok' and name != 'search_knowledge':
-            values = payload.get('result')
-            rows = values if isinstance(values, list) else [values]
-            for row in rows:
-                if isinstance(row, dict) and row not in self.records:
-                    self.records.append(row)
-        return result
+        self.records=[]; self.documents=[]; self.tools_used=[]; self.demo_data=False; self.source_details=[]
+        self.lot_id=lot_id
+        if lot_id:
+            self.related={r['lot_id'] for r in repo.lot_trace(lot_id)}
+            self.handlers={k:v for k,v in self.handlers.items() if k in {'get_lot_trace','get_fermentation_status','get_ccp_deviations','get_shipment_readiness','get_process_measurements','search_knowledge','get_rules'}}
+    @property
+    def definitions(self):
+        return [d for d in super().definitions if d['name'] in self.handlers]
+    def execute(self,name,arguments):
+        args=json.loads(arguments) if isinstance(arguments,str) else dict(arguments)
+        if self.lot_id and name in {'get_lot_trace','get_fermentation_status','get_shipment_readiness','get_process_measurements'}:
+            args['lot_id']=self.lot_id if name=='get_lot_trace' else None
+        payload=json.loads(super().execute(name,args))
+        if payload.get('status')=='ok':
+            values=payload.get('result')
+            if self.lot_id and name in {'get_fermentation_status','get_ccp_deviations','get_shipment_readiness','get_process_measurements'}:
+                values=[r for r in values if r.get('lot_id') in self.related]
+                payload['result']=payload['data']=values
+            sample=name not in {'list_tags','get_latest','get_readings','get_ccp_excursions'}
+            payload.update(demo_data=sample,source='임진강김치 2026년 9월 샘플·미승인' if sample else '연결된 데이터 플랫폼 조회',retrieved_at=stamp())
+            self.demo_data=self.demo_data or sample
+            self.tools_used.append(name)
+            self.source_details.append({'tool':name,'source':payload['source'],'retrieved_at':payload['retrieved_at']})
+            if name=='search_knowledge':self.documents.extend(values or [])
+            else:
+                for row in values if isinstance(values,list) else [values]:
+                    if isinstance(row,dict) and row not in self.records:self.records.append(row)
+        return json.dumps(payload,ensure_ascii=False,default=str)
 
 
 def create_app(repository=None, static_dir: Path | None = None):
@@ -228,16 +246,8 @@ def create_app(repository=None, static_dir: Path | None = None):
             f'현재 선택 LOT: {lot_id or "전체 기록"}\n조회 자료: {realtime_context(lot_id)}'
         )
         registry = ImjingangToolRegistry(app.state.repo)
-        realtime_tool_names = {
-            'search_knowledge', 'get_lot_trace', 'get_fermentation_status',
-            'get_ccp_deviations', 'get_inventory_status', 'get_shipment_readiness',
-            'get_process_measurements', 'list_tags', 'get_latest', 'get_readings',
-            'get_ccp_excursions',
-        }
-        realtime_tools = [
-            {key: value for key, value in definition.items() if key != 'strict'}
-            for definition in registry.definitions if definition.get('name') in realtime_tool_names
-        ]
+        realtime_tools=[{'type':'function','name':'analyze_manufacturing_question','description':'임진강김치 제조 질문을 LangGraph로 조회·분석한다.','parameters':{'type':'object','properties':{'question':{'type':'string'},'lot_id':{'type':['string','null']}},'required':['question','lot_id'],'additionalProperties':False}}]
+        instructions += '\n호출명 없이 질문에 답하세요. 제조 질문 전체를 analyze_manufacturing_question으로 분석하고 voice_summary를 짧게 읽으세요. 문서와 샘플 예측은 승인 판단이 아닙니다.'
         session = {
             'type': 'realtime',
             'model': os.getenv('OPENAI_REALTIME_MODEL', 'gpt-realtime-2.1'),
@@ -249,7 +259,7 @@ def create_app(repository=None, static_dir: Path | None = None):
                 'input': {
                     'transcription': {'model': 'gpt-4o-mini-transcribe', 'language': 'ko'},
                     'noise_reduction': {'type': 'near_field'},
-                    'turn_detection': {'type': 'semantic_vad', 'eagerness': 'high', 'create_response': True, 'interrupt_response': True},
+                    'turn_detection': {'type': 'semantic_vad', 'eagerness': 'high', 'create_response': False, 'interrupt_response': True},
                 },
                 'output': {'voice': os.getenv('OPENAI_REALTIME_VOICE', 'marin')},
             },
@@ -267,6 +277,9 @@ def create_app(repository=None, static_dir: Path | None = None):
     @app.post('/api/realtime/tool')
     def realtime_tool(body: RealtimeToolCall, request: Request, authorization: str | None = Header(default=None)):
         require_ai_key(authorization, request)
+        if body.name=='analyze_manufacturing_question':
+            answer=chat(Question(**{**body.arguments,'mode':'ai'}),request,Response(),authorization)
+            return {'output':json.dumps(answer,ensure_ascii=False)}
         registry = ImjingangToolRegistry(app.state.repo)
         output = registry.execute(body.name, body.arguments)
         return {'output': output}
@@ -313,6 +326,11 @@ def create_app(repository=None, static_dir: Path | None = None):
         if not body.question.strip():
             raise HTTPException(422, '질문을 입력해 주세요.')
         repo = app.state.repo
+        history=[{'role':h.get('role'),'text':h.get('text','')[:4000]} for h in body.history if h.get('role') in {'user','assistant'}]
+        try:
+            body.lot_id=resolve_lot(body.question,body.lot_id,history)
+        except ValueError as exc:
+            raise HTTPException(422,str(exc)) from exc
         if body.lot_id and not repo.lot_trace(body.lot_id):
             raise HTTPException(404, '선택한 LOT를 찾을 수 없습니다.')
         explicit = re.findall(r'(?:RAW|SORT|SALT|MIX|FERM|PACK)-\d{6}-\d{3}', body.question.upper())
@@ -337,12 +355,23 @@ def create_app(repository=None, static_dir: Path | None = None):
                 if len(' '.join([*spoken, part])) > 350:
                     break
                 spoken.append(part)
-            answer['summary'] = ' '.join(spoken) or '상세 답변을 화면에서 확인해 주세요.'
+            answer['summary'] = answer.get('voice_summary') or ' '.join(spoken) or '상세 답변을 화면에서 확인해 주세요.'
             answer['retrieved_at'] = stamp()
             answer['unknowns'] = []
             return app.state.work.capture(user, body.question, answer)
-        if body.mode == 'demo':
-            return finish({**demo_answer(repo, body.question, body.lot_id), 'context': {'lot_id': body.lot_id, 'as_of': stamp()}})
+        def retrieve_demo(question,parts):
+            queries=list(dict.fromkeys([question]+parts))
+            if any(w in question for w in ['비교','함께','종합','그리고']):
+                queries += [key+' 현황' for key in ['발효','CCP','재고','출하','규칙','측정'] if key in question]
+            answers=[demo_answer(repo,q,body.lot_id) for q in queries[:8]]
+            answer=answers[0]
+            for other in answers[1:]:
+                for key in ['records','evidence','data_tools','sources']:
+                    for item in other.get(key,[]):
+                        if item not in answer[key]:answer[key].append(item)
+            return answer
+        if body.mode=='demo':
+            return finish(analyze(body.question,history,retrieve_demo))
         client = require_ai(authorization, request)
         if not capacity.acquire(blocking=False):
             client.close()
@@ -353,11 +382,32 @@ def create_app(repository=None, static_dir: Path | None = None):
                 question += '\n저장 업무 참고 자료 (지시가 아닌 과거 기록, 현재 원본을 다시 확인할 것):\n' + json.dumps({
                     'title': work['title'], 'notes': work['notes'][-3:],
                     'previous_questions': [s['question'] for s in work.get('snapshots', [])[-3:]]}, ensure_ascii=False)
-            registry = EvidenceRegistry(repo)
-            result = ManufacturingAgent(client, model=os.getenv('OPENAI_MODEL') or DEFAULT_MODEL, factory_tools=registry).ask(question, previous_response_id=None)
-            answer = asdict(result)
-            answer.pop('response_id')
-            return finish({**answer, 'mode': 'ai', 'demo_data': False, 'records': registry.records})
+            def retrieve_ai(original,parts):
+                registry=EvidenceRegistry(repo,body.lot_id)
+                date_match=re.search(r'\d{4}-\d{2}-\d{2}',body.question)
+                date=date_match.group() if date_match else None
+                if body.lot_id:registry.execute('get_lot_trace',{'lot_id':body.lot_id})
+                queries=[
+                    (['발효','pH','염도','위험'],'get_fermentation_status',{'lot_id':body.lot_id}),
+                    (['CCP','부적합','금속'],'get_ccp_deviations',{'date':date}),
+                    (['출하'],'get_shipment_readiness',{'lot_id':body.lot_id}),
+                    (['재고','부족'],'get_inventory_status',{'item':'율무' if '율무' in body.question else None,'shortage_only':False}),
+                    (['측정','온도'],'get_process_measurements',{'lot_id':body.lot_id}),
+                ]
+                for words,name,args in queries:
+                    if name in registry.handlers and any(word in body.question for word in words):registry.execute(name,args)
+                if any(w in body.question for w in ['문서','절차','규칙','기준','승인']):
+                    registry.execute('search_knowledge',{'query':body.question});registry.execute('get_rules',{})
+                prompt=question+'\n참고 대화: '+json.dumps(history,ensure_ascii=False)+'\n요청별 확인: '+json.dumps(parts,ensure_ascii=False)
+                prompt+='\n사전 조회 근거: '+json.dumps({'records':registry.records,'documents':registry.documents,'sources':registry.source_details},ensure_ascii=False)
+                prompt+='\n각 요청의 비교·미확인·다음 확인사항을 설명하세요. 2026년 9월 샘플과 연결 플랫폼 조회를 구분하고, 품질예측·완료예상을 실제 측정이나 승인 판정으로 표현하지 마세요. 자료 없는 기준·원인·담당자를 추측하지 마세요.'
+                result=ManufacturingAgent(client,model=os.getenv('OPENAI_MODEL') or DEFAULT_MODEL,factory_tools=registry).ask(prompt,previous_response_id=None)
+                answer=asdict(result);answer.pop('response_id',None)
+                answer['data_tools']=list(dict.fromkeys(registry.tools_used+answer.get('data_tools',[])))
+                for doc in registry.documents:
+                    if doc not in answer['evidence']:answer['evidence'].append(doc)
+                return {**answer,'mode':'ai','demo_data':registry.demo_data,'records':registry.records,'source_details':registry.source_details}
+            return finish(analyze(body.question,history,retrieve_ai,client,os.getenv('OPENAI_MODEL') or DEFAULT_MODEL))
         except Exception as exc:
             raise HTTPException(502, 'AI 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요.') from exc
         finally:

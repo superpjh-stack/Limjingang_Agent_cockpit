@@ -7,3 +7,5 @@ pgvector>=0.3.6,<1
 python-multipart>=0.0.20
 httpx>=0.28,<1
 pytest>=8.3,<10
+
+langgraph>=1,<2
