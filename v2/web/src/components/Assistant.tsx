@@ -1,12 +1,13 @@
 import {forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
 import {Mic,MicOff,PhoneOff,Play,Send,X,Volume2,RotateCcw,Save,Copy,LoaderCircle,Check} from 'lucide-react';
 import {request,track,type Answer,type Workspace,type User,type WorkItem} from '../types';
+import {DailyReport} from './DailyReport';
 import {useVoice} from '../hooks/useVoice';
 import {useRealtimeVoice} from '../hooks/useRealtimeVoice';
 
 export type AssistantHandle={ask:(text:string,lot?:string)=>void;prepare:(text:string,lot?:string)=>void;focus:()=>void};
-type Props={data:Workspace;token:string;user:User|null;lot:string;onLot:(lot:string)=>void;onSettings:()=>void;onSave:(answer:Answer,question:string)=>void;work:WorkItem|null;open:boolean;onClose:()=>void;voiceFirst?:boolean;onQuestion?:(question:string)=>void};
-export const Assistant=forwardRef<AssistantHandle,Props>(function Assistant({data,token,user,lot,onLot,onSettings,onSave,work,open,onClose,voiceFirst=false,onQuestion},ref){
+type Props={active?:boolean;data:Workspace;token:string;user:User|null;lot:string;onLot:(lot:string)=>void;onSettings:()=>void;onSave:(answer:Answer,question:string)=>void;work:WorkItem|null;open:boolean;onClose:()=>void;voiceFirst?:boolean;onQuestion?:(question:string)=>void};
+export const Assistant=forwardRef<AssistantHandle,Props>(function Assistant({active=true,data,token,user,lot,onLot,onSettings,onSave,work,open,onClose,voiceFirst=false,onQuestion},ref){
  const [copied,setCopied]=useState<number|null>(null);
  const mode:'ai'|'demo'=data.meta.ai_configured?'ai':'demo';
  const [text,setText]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -16,6 +17,7 @@ export const Assistant=forwardRef<AssistantHandle,Props>(function Assistant({dat
  const lock=useRef(false),epoch=useRef(0),abort=useRef<AbortController|null>(null),input=useRef<HTMLTextAreaElement>(null),panel=useRef<HTMLElement>(null),chatScroll=useRef<HTMLDivElement>(null);
  const voice=useVoice(token,value=>{setText(value);heard.current=value;setTranscribed(true);input.current?.focus()});
  const realtime=useRealtimeVoice(token,lot,turn=>setLiveTurns(items=>[...items,turn]),(_name,output)=>{try{const answer=JSON.parse(output) as Answer;if(answer.text)setLiveTurns(items=>[...items,{role:'assistant',text:answer.text,answer}])}catch{/* Invalid tool output is not evidence. */}});
+ useEffect(()=>{if(!active){voice.cancel();realtime.stop()}},[active]);
  const voiceAvailable=data.meta.ai_configured&&(!!token||!!data.meta.local_dev_ai);
  function cancel(){epoch.current++;abort.current?.abort();lock.current=false;setBusy(false);setPendingQuestion('');voice.cancel();realtime.stop()}
  useEffect(()=>{cancel();setMessages(work?.snapshots?.length?work.snapshots:work?.snapshot?[work.snapshot]:[]);setLiveTurns([]);setText(staged.current||'');staged.current=null;setError('');setTranscribed(false);setCopied(null)},[lot,work?.id,user?.id,token]);
@@ -67,4 +69,4 @@ export const Assistant=forwardRef<AssistantHandle,Props>(function Assistant({dat
  </aside>
 });
 
-function AnswerContent({answer}:{answer:Answer}){return <>{answer.comparison_tables?.map((table,i)=><section className="comparison-table" key={i}><h3>{table.title}</h3><div className="table-scroll" tabIndex={0} role="region" aria-label={table.title}><table><thead><tr>{table.columns.map(c=><th key={c}>{c}</th>)}</tr></thead><tbody>{table.rows.map((r,ri)=><tr key={ri}>{r.map((v,ci)=><td key={ci}>{v}</td>)}</tr>)}</tbody></table></div></section>)}{answer.comparison_tables?.length?<details><summary>분석 설명과 다음 확인사항</summary><p>{answer.text}</p></details>:<p>{answer.text}</p>}{answer.request_coverage&&<details><summary>요청별 답변 확인</summary><ul>{answer.request_coverage.map((c,i)=><li key={i}>{c.request} · {c.status==='answered'?'답변·근거 확인':'추가 확인 필요'}</li>)}</ul></details>}</>}
+function AnswerContent({answer}:{answer:Answer}){return <>{(answer.report||answer.report_picker)&&<DailyReport initial={answer.report}/>}{answer.comparison_tables?.map((table,i)=><section className="comparison-table" key={i}><h3>{table.title}</h3><div className="table-scroll" tabIndex={0} role="region" aria-label={table.title}><table><thead><tr>{table.columns.map(c=><th key={c}>{c}</th>)}</tr></thead><tbody>{table.rows.map((r,ri)=><tr key={ri}>{r.map((v,ci)=><td key={ci}>{v}</td>)}</tr>)}</tbody></table></div></section>)}{answer.comparison_tables?.length?<details><summary>분석 설명과 다음 확인사항</summary><p>{answer.text}</p></details>:<p>{answer.text}</p>}{answer.request_coverage&&<details><summary>요청별 답변 확인</summary><ul>{answer.request_coverage.map((c,i)=><li key={i}>{c.request} · {c.status==='answered'?'답변·근거 확인':'추가 확인 필요'}</li>)}</ul></details>}</>}

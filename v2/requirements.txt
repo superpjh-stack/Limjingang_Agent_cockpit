@@ -9,3 +9,6 @@ httpx>=0.28,<1
 pytest>=8.3,<10
 
 langgraph>=1,<2
+
+reportlab==4.4.10
+pillow==12.1.1

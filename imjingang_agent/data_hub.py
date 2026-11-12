@@ -70,6 +70,8 @@ class ImjingangRepository:
             if connection.execute("SELECT COUNT(*) FROM lots").fetchone()[0] == 0:
                 self._seed(connection)
             self._initialize_knowledge(connection)
+            from .report_samples import seed_report_samples
+            seed_report_samples(connection)
 
     @staticmethod
     def _seed(connection: sqlite3.Connection) -> None:
@@ -339,7 +341,7 @@ class ImjingangRepository:
                 f'SELECT * FROM "{table}" ORDER BY {order} LIMIT ? OFFSET ?', (limit, offset)
             ).fetchall())
 
-    TABLE_LABELS = {"lots":"LOT 계보", "process_measurements":"공정 측정", "ccp_checks":"CCP 검사", "fermentation_predictions":"발효 예측", "inventory":"원료·제품 재고", "shipments":"출하", "claims":"클레임", "rules":"판정 룰"}
+    TABLE_LABELS = {"report_sample_products":"샘플 제품·규격", "report_sample_customers":"샘플 거래처", "report_sample_production":"샘플 생산실적", "lots":"LOT 계보", "process_measurements":"공정 측정", "ccp_checks":"CCP 검사", "fermentation_predictions":"발효 예측", "inventory":"원료·제품 재고", "shipments":"출하", "claims":"클레임", "rules":"판정 룰"}
 
 class _PostgresRow(dict):
     """Dictionary row with SQLite-compatible integer indexing for shared code."""

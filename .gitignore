@@ -17,3 +17,5 @@ infra/imjingang-v2-aws/cdk.out/
 *.tsbuildinfo
 data/imjingang_v2_demo.db
 data/imjingang_v3_demo.db
+
+outputs/

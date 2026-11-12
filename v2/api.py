@@ -23,6 +23,8 @@ from imjingang_agent.data_hub import PostgresRepository, create_repository
 from imjingang_agent.service import DEFAULT_MODEL
 from imjingang_agent.ui_helpers import lot_snapshot
 from v2.compound import analyze, resolve_lot, QUESTION_GROUPS
+from v2 import reports
+from v2.studio import StudioRequest, build_studio
 from v2.metrics import create_tables, install_metrics
 from v2.work import WorkStore, install_work, stamp
 
@@ -152,12 +154,14 @@ def create_app(repository=None, static_dir: Path | None = None):
         app.state.repo = repository or create_repository(os.getenv('V2_SQLITE_PATH', str(ROOT / 'data/imjingang_v2_demo.db')))
         app.state.work = WorkStore(app.state.repo)
         create_tables(app.state.repo)
+        reports.initialize(app.state.repo)
         yield
 
     app = FastAPI(title='Imjingang Operations API', version='2.0.0', lifespan=lifespan)
     capacity = BoundedSemaphore(3)
     voice_capacity = BoundedSemaphore(3)
     install_work(app)
+    reports.install(app)
     install_metrics(app)
 
     @app.middleware('http')
@@ -327,6 +331,9 @@ def create_app(repository=None, static_dir: Path | None = None):
         if not body.question.strip():
             raise HTTPException(422, '질문을 입력해 주세요.')
         repo = app.state.repo
+        if reports.is_daily(body.question):
+            user=app.state.work.user(request,False)
+            return reports.chat_report(repo,body.question,user['id'] if user else None,body.lot_id)
         history=[{'role':h.get('role'),'text':h.get('text','')[:4000]} for h in body.history if h.get('role') in {'user','assistant'}]
         try:
             body.lot_id=resolve_lot(body.question,body.lot_id,history)
@@ -414,6 +421,22 @@ def create_app(repository=None, static_dir: Path | None = None):
         finally:
             client.close()
             capacity.release()
+
+    @app.post('/api/v3/studio')
+    def studio(body: StudioRequest, request: Request, authorization: str | None = Header(default=None)):
+        client = require_ai(authorization, request) if body.use_ai and body.mode == 'ideas' else None
+        if not capacity.acquire(blocking=False):
+            if client: client.close()
+            raise HTTPException(429, '다른 작업을 처리 중입니다. 잠시 후 다시 시도해 주세요.')
+        try:
+            return build_studio(app.state.repo, body, client, os.getenv('OPENAI_MODEL') or 'gpt-5.6-sol')
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(502, '연구소 결과를 만들지 못했습니다. 다시 시도해 주세요.') from exc
+        finally:
+            capacity.release()
+            if client: client.close()
 
     @app.post('/api/voice/transcribe')
     def transcribe(request: Request, file: UploadFile, authorization: str | None = Header(default=None)):

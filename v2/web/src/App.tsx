@@ -1,7 +1,21 @@
 import {useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {BookOpen, ChevronRight, CircleAlert, Database, FileText, History, LoaderCircle, Menu, RefreshCw, Search, Settings2, Sparkles, Table2, X} from 'lucide-react';
+import {DailyReport} from './components/DailyReport';
+import {KimchiStudio} from './components/KimchiStudio';
 import {Assistant, type AssistantHandle} from './components/Assistant';
 import {request, type Document, type Row, type Workspace} from './types';
+
+const REPORTS = [
+  ['일일생산보고서','2026년 9월 3일 일일생산보고서를 만들어줘.'],
+  ['기간별 생산실적표','2026년 9월 1일부터 20일까지 제품별 생산실적을 정리해줘.'],
+  ['생산계획 대비 실적표','2026년 9월 3일 계획량과 양품 생산량, 목표 달성률을 비교해줘.'],
+  ['불량 현황 보고서','2026년 9월 1일부터 20일까지 제품별 불량 수량과 불량률을 정리해줘.'],
+  ['라인별 생산실적표','2026년 9월 1일부터 7일까지 라인별 생산량과 불량률을 비교해줘.'],
+  ['LOT별 생산내역서','2026년 9월 3일 생산한 LOT별 제품·규격·생산량·완료 시각을 보여줘.'],
+  ['제품·규격 목록표','등록된 샘플 제품 100개의 품명과 포장규격을 정리해줘.'],
+  ['거래처 목록표','샘플 거래처 100개를 지역·유통채널·배송 방식별로 정리해줘.'],
+  ['출고요청서','가상거래처 001에 포기김치 10kg 20개를 내일 배송하는 출고요청서를 만들어줘.'],
+] as const;
 
 type LibraryTab = 'knowledge' | 'data';
 type SidePanel = 'library' | 'questions' | null;
@@ -18,6 +32,8 @@ function Modal({title, onClose, children}:{title:string; onClose:()=>void; child
 const cleanDocumentName = (filename:string) => filename.replace(/^IMJ-KB-\d+_/, '').replace(/\.md$/, '').replaceAll('_', ' ');
 
 export default function App() {
+  const [reportOpen,setReportOpen]=useState(false);
+  const [view,setView]=useState<'studio'|'chat'>('studio');
   const assistant = useRef<AssistantHandle>(null);
   const [data, setData] = useState<Workspace|null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -31,6 +47,7 @@ export default function App() {
   const [sidePanel, setSidePanel] = useState<SidePanel>(null);
   const [search, setSearch] = useState('');
   const [selectedDocument, setSelectedDocument] = useState<Document|null>(null);
+  const [selectedRecord,setSelectedRecord]=useState<Row|null>(null);
   const [selectedTable, setSelectedTable] = useState('lots');
   const [contextLot, setContextLot] = useState('');
   const [token, setToken] = useState(() => sessionStorage.getItem('imj_access_token') || '');
@@ -48,12 +65,12 @@ export default function App() {
       .catch(reason => setError(reason.message)).finally(() => setLoading(false));
   }
   useEffect(load, []);
-  useEffect(() => { if(data) document.title = '임진강김치 에이전트'; }, [data?.meta.company]);
+  useEffect(() => { if(data) document.title = '임진강김치 에이전트 V3'; }, [data?.meta.company]);
   useEffect(() => {
     if (!data || libraryTab !== 'data') return;
     const controller = new AbortController();
     setTableLoading(true); setTableError(''); setRows([]);
-    request<Row[]>(`/tables/${selectedTable}?limit=10&offset=0`, {signal:controller.signal}).then(setRows).catch(reason => {if (!controller.signal.aborted) setTableError(reason.message);}).finally(() => {if (!controller.signal.aborted) setTableLoading(false);});
+    request<Row[]>(`/tables/${selectedTable}?limit=100&offset=0`, {signal:controller.signal}).then(setRows).catch(reason => {if (!controller.signal.aborted) setTableError(reason.message);}).finally(() => {if (!controller.signal.aborted) setTableLoading(false);});
     return () => controller.abort();
   }, [data, selectedTable, libraryTab]);
   useEffect(() => {
@@ -67,7 +84,7 @@ export default function App() {
   const recommendations = useMemo(() => data?.questions[recommendationTab]?.slice(0, 10) ?? [], [data, recommendationTab]);
   const filteredDocuments = documents.filter(document => `${document.title ?? ''} ${document.filename} ${document.content}`.toLowerCase().includes(search.toLowerCase()));
   const activeTable = data?.tables.find(table => table.table === selectedTable);
-  function ask(question:string) { assistant.current?.ask(question, contextLot); setSidePanel(null); }
+  function ask(question:string) { setView('chat'); assistant.current?.ask(question, contextLot); setSidePanel(null); }
   function rememberQuestion(question:string) { setHistory(items => [question, ...items.filter(item => item !== question)].slice(0, 20)); }
 
   if (loading) return <div className="state-page"><LoaderCircle className="spin"/><h1>임진강김치 제조 기록을 준비하고 있습니다.</h1></div>;
@@ -75,7 +92,7 @@ export default function App() {
 
   return <div className="imj-app">
     <header className="app-header">
-      <div className="brand"><span className="brand-mark"><span className="brand-seal" aria-hidden="true">임</span></span><div><strong>임진강김치 에이전트</strong><small>LOT · 발효 · 품질 · 출하</small></div></div>
+      <div className="brand"><span className="brand-mark"><span className="brand-seal" aria-hidden="true">임</span></span><div><strong>임진강김치 에이전트 V3</strong><small>LOT · 발효 · 품질 · 출하</small></div></div>
       <div className="record-status"><span>{data.meta.demo_data ? '샘플 기록 기준' : '기록 기준일'}</span><strong>{data.meta.as_of}</strong></div>
       <div className="header-actions"><button className="mobile-panel-button" onClick={() => setSidePanel('library')}><Menu size={18}/>자료</button><button className="mobile-panel-button" onClick={() => setSidePanel('questions')}><Sparkles size={18}/>질문</button><button className="icon-button" aria-label="데이터 새로고침" onClick={load}><RefreshCw size={18}/></button><button className="settings-button" onClick={() => { setTokenDraft(token); setSettings(true); }}><Settings2 size={17}/>연결 설정</button></div>
     </header>
@@ -84,18 +101,21 @@ export default function App() {
     <div className="workspace-grid">
       <aside className={`question-panel ${sidePanel === 'questions' ? 'mobile-open' : ''}`}>
         <div className="side-heading"><div><span>질문</span><h2>추천질문리스트</h2></div><button className="icon-button mobile-close" aria-label="질문 패널 닫기" onClick={() => setSidePanel(null)}><X size={18}/></button></div>
+        <section className="report-section" aria-label="보고서 종류"><h3><FileText size={17}/>보고서 종류 <span>{REPORTS.length}</span></h3><p className="report-note">선택하면 요청 예시가 입력됩니다.<br/>일일생산보고서: Excel·PDF 생성 가능</p><ol>{REPORTS.map(([name,question],index)=><li key={name}><button onClick={()=>{if(index===0){setReportOpen(true);setSidePanel(null);return;}setView('chat');setSidePanel(null);assistant.current?.prepare(question,'');requestAnimationFrame(()=>assistant.current?.focus());}}><span>{String(index+1).padStart(2,'0')}</span><strong>{name}</strong><ChevronRight size={14}/></button></li>)}</ol></section>
         <section className="history-section"><h3><History size={17}/>최근 질문 <span>{history.length}</span></h3>{history.length ? <div className="history-list">{history.map((question, index) => <button key={`${question}-${index}`} onClick={() => ask(question)}><span>{question}</span><ChevronRight size={15}/></button>)}</div> : <p className="empty-note">이 세션에서 질문하면 여기에 쌓입니다.</p>}</section>
         <section className="recommend-section"><h3><Sparkles size={17}/>추천 질문</h3><div className="recommend-tabs" role="tablist" aria-label="질문 예시 분류">{(['데이터 대시보드','지식베이스','복합질문'] as RecommendationTab[]).map(tab=><button key={tab} role="tab" aria-selected={recommendationTab===tab} className={recommendationTab===tab?'active':''} onClick={()=>setRecommendationTab(tab)}>{tab}</button>)}</div><ol>{recommendations.map((question, index) => <li key={question}><button onClick={() => ask(question)}><span>{String(index + 1).padStart(2, '0')}</span>{question}</button></li>)}</ol></section>
       </aside>
-      <main className="conversation-panel"><Assistant ref={assistant} data={data} token={token} user={null} lot={contextLot} onLot={setContextLot} onSettings={() => { setTokenDraft(token); setSettings(true); }} onSave={() => setSettings(true)} work={null} open={false} onClose={() => {}} onQuestion={rememberQuestion}/></main>
+      <main className="conversation-panel"><nav className="view-switch" aria-label="작업 화면"><button className={view==='studio'?'active':''} onClick={()=>setView('studio')}>김치연구소</button><button className={view==='chat'?'active':''} onClick={()=>setView('chat')}>업무 대화</button></nav><div className="workspace-view" hidden={view!=='studio'}><KimchiStudio data={data} token={token} active={view==='studio'} onSettings={()=>{setTokenDraft(token);setSettings(true)}} onAsk={ask}/></div><div className="workspace-view" hidden={view!=='chat'}><Assistant active={view==='chat'} ref={assistant} data={data} token={token} user={null} lot={contextLot} onLot={setContextLot} onSettings={() => { setTokenDraft(token); setSettings(true); }} onSave={() => setSettings(true)} work={null} open={false} onClose={() => {}} onQuestion={rememberQuestion}/></div></main>
 
       <aside className={`library-panel ${sidePanel === 'library' ? 'mobile-open' : ''}`}>
         <div className="side-heading"><div><span>연결된 자료</span><h2>지식베이스 · DB</h2></div><button className="icon-button mobile-close" aria-label="자료 패널 닫기" onClick={() => setSidePanel(null)}><X size={18}/></button></div>
         <div className="library-tabs" role="tablist"><button role="tab" aria-selected={libraryTab === 'knowledge'} className={libraryTab === 'knowledge' ? 'active' : ''} onClick={() => setLibraryTab('knowledge')}><BookOpen size={17}/>지식베이스</button><button role="tab" aria-selected={libraryTab === 'data'} className={libraryTab === 'data' ? 'active' : ''} onClick={() => setLibraryTab('data')}><Database size={17}/>데이터허브</button></div>
-        {libraryTab === 'knowledge' ? <><label className="side-search"><Search size={16}/><span className="sr-only">문서 검색</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="문서명 또는 공정 검색"/></label><p className="source-note">샘플 지식베이스 {documents.length}개 · 미승인 예시</p><div className="document-list">{filteredDocuments.map(document => <button key={document.document_id} onClick={() => setSelectedDocument(document)}><FileText size={18}/><span><strong>{document.title || cleanDocumentName(document.filename)}</strong><small>{document.status}</small></span><ChevronRight size={16}/></button>)}</div>{!filteredDocuments.length && <p className="empty-note">검색 결과가 없습니다. 다른 단어로 찾아보세요.</p>}</> : <><label className="table-picker">조회할 데이터<select value={selectedTable} onChange={event => setSelectedTable(event.target.value)}>{data.tables.map(table => <option key={table.table} value={table.table}>{table.label} ({table.count})</option>)}</select></label><p className="source-note">기록을 선택하면 에이전트에게 질문합니다</p><div className="data-preview"><div><Table2 size={18}/><strong>{activeTable?.label}</strong><span>{activeTable?.count ?? 0}건</span></div>{tableLoading && <p className="empty-note" role="status">기록을 불러오는 중입니다.</p>}{tableError && <p className="empty-note" role="alert">{tableError}</p>}{!tableLoading && !tableError && !rows.length && <p className="empty-note">등록된 기록이 없습니다.</p>}{rows.slice(0, 10).map((row, index) => <button key={index} onClick={() => ask(`${String(row.lot_id ?? row.batch_id ?? row.material_name ?? row.menu_name ?? row.item_name ?? row.name ?? activeTable?.label)} 기록을 확인해줘`)}><span>{String(row.lot_id ?? row.batch_id ?? row.material_name ?? row.menu_name ?? row.item_name ?? row.name ?? `기록 ${index + 1}`)}</span><ChevronRight size={15}/></button>)}</div></>}
+        {libraryTab === 'knowledge' ? <><label className="side-search"><Search size={16}/><span className="sr-only">문서 검색</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="문서명 또는 공정 검색"/></label><p className="source-note">샘플 지식베이스 {documents.length}개 · 미승인 예시</p><div className="document-list">{filteredDocuments.map(document => <button key={document.document_id} onClick={() => setSelectedDocument(document)}><FileText size={18}/><span><strong>{document.title || cleanDocumentName(document.filename)}</strong><small>{document.status}</small></span><ChevronRight size={16}/></button>)}</div>{!filteredDocuments.length && <p className="empty-note">검색 결과가 없습니다. 다른 단어로 찾아보세요.</p>}</> : <><label className="table-picker">조회할 데이터<select value={selectedTable} onChange={event => setSelectedTable(event.target.value)}>{data.tables.map(table => <option key={table.table} value={table.table}>{table.label} ({table.count})</option>)}</select></label><p className="source-note">{selectedTable.startsWith('report_sample_')?'가상 샘플 · 선택하면 상세 기록 표시':'기록을 선택하면 에이전트에게 질문합니다'}</p><div className="data-preview"><div><Table2 size={18}/><strong>{activeTable?.label}</strong><span>{activeTable?.count ?? 0}건</span></div>{tableLoading && <p className="empty-note" role="status">기록을 불러오는 중입니다.</p>}{tableError && <p className="empty-note" role="alert">{tableError}</p>}{!tableLoading && !tableError && !rows.length && <p className="empty-note">등록된 기록이 없습니다.</p>}{rows.slice(0, selectedTable.startsWith('report_sample_')?100:10).map((row, index) => <button key={index} onClick={() => selectedTable.startsWith('report_sample_')?setSelectedRecord(row):ask(`${String(row.product_name ?? row.customer_name ?? row.record_id ?? row.lot_id ?? row.batch_id ?? row.material_name ?? row.menu_name ?? row.item_name ?? row.name ?? activeTable?.label)} 기록을 확인해줘`)}><span>{String(row.product_name ?? row.customer_name ?? row.record_id ?? row.lot_id ?? row.batch_id ?? row.material_name ?? row.menu_name ?? row.item_name ?? row.name ?? `기록 ${index + 1}`)}</span><ChevronRight size={15}/></button>)}</div></>}
       </aside>
     </div>
 
+    {reportOpen && <Modal title="일일생산보고서 만들기" onClose={()=>setReportOpen(false)}><DailyReport/></Modal>}
+    {selectedRecord && <Modal title="임진강김치 가상 샘플 상세" onClose={()=>setSelectedRecord(null)}><p>보고서 검증용이며 실제 제품·거래·생산 사실이 아닙니다.</p><pre className="document-content">{JSON.stringify(selectedRecord,null,2)}</pre></Modal>}
     {selectedDocument && <Modal title={selectedDocument.title || cleanDocumentName(selectedDocument.filename)} onClose={() => setSelectedDocument(null)}><div className="document-meta"><code>{selectedDocument.document_id}</code><span>{selectedDocument.status}</span></div><pre className="document-content">{selectedDocument.content}</pre></Modal>}
     {settings && <Modal title="AI 연결 설정" onClose={() => setSettings(false)}><p className="settings-copy" role="status">{!data.meta.ai_configured ? '서버 AI 설정이 준비되지 않았습니다. 서버에 OpenAI API 키를 등록하고 재시작해야 합니다. 아래 접근 코드로는 API 키를 대신할 수 없습니다.' : data.meta.local_dev_ai ? '서버 AI 설정이 준비되어 있습니다. 이 기기에서는 접근 코드 없이 질문할 수 있습니다.' : '서버 AI 설정이 준비되어 있습니다. 관리자가 발급한 접근 코드를 입력해 주세요.'}</p>{data.meta.ai_configured && !data.meta.local_dev_ai && <label className="form-label">AI 접근 코드<input type="password" autoComplete="off" value={tokenDraft} onChange={event => setTokenDraft(event.target.value)}/></label>}<div className="modal-actions"><button className="secondary-button" onClick={() => setSettings(false)}>닫기</button><button className="secondary-button" onClick={() => { setSettings(false); load(); }}>연결 상태 새로고침</button>{data.meta.ai_configured && !data.meta.local_dev_ai && <button className="primary-button" disabled={!tokenDraft.trim()} onClick={() => { const next = tokenDraft.trim(); setToken(next); sessionStorage.setItem('imj_access_token', next); setSettings(false); }}>연결 적용</button>}</div></Modal>}
   </div>;
